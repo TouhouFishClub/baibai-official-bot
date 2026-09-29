@@ -16,9 +16,21 @@
 
 ```bash
 cp .env.example .env
-npm ci --omit=dev
 bash run.sh
 ```
+
+`run.sh` 会执行 `npm ci --omit=dev`，并复用老服务器上原项目已经能够调用的 `forever` 命令，不需要安装 PM2 或其他全局包。重复执行脚本会先停止同名进程再按最新代码启动。
+
+常用管理命令：
+
+```bash
+forever list
+forever stop baibai-legacy-data-bridge
+tail -f out.log
+tail -f err.log
+```
+
+Node.js 最大堆内存与旧项目一致设置为 8192 MB；普通日志和错误日志分别追加到当前目录的 `out.log`、`err.log`。
 
 使用以下命令生成共享密钥，并把同一个值分别写入老服和新服 `.env`：
 
