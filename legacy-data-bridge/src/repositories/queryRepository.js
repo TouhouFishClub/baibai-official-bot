@@ -10,7 +10,8 @@ const SERVER_ALIASES = {
 const ALLOWED_SERVERS = new Set(['ylx', 'yate']);
 const TV_FIELDS = {
   mbtv: ['reward', 'character_name', 'dungeon_name'],
-  mbcd: ['item_name', 'character_name', 'draw_pool']
+  mbcd: ['item_name', 'character_name', 'draw_pool'],
+  mbzz: ['item_name', 'character_name']
 };
 
 function escapeRegex(value) {
@@ -44,7 +45,8 @@ function buildTelevisionQuery(kind, filter) {
   const parts = String(filter).split('-');
   if (parts.length === 1) {
     const regex = new RegExp(escapeRegex(filter), 'i');
-    return { $or: fields.slice(0, 2 + Number(kind === 'mbtv')).map((field) => ({ [field]: regex })) };
+    const orFields = kind === 'mbtv' ? fields : fields.slice(0, 2);
+    return { $or: orFields.map((field) => ({ [field]: regex })) };
   }
   const conditions = parts
     .slice(0, fields.length)
@@ -65,16 +67,20 @@ async function resolveServer(db, userId, explicitServer) {
   return 'ylx';
 }
 
+const TV_PROJECTION = {
+  mbtv: { character_name: 1, reward: 1, dungeon_name: 1, channel: 1, time: 1, ts: 1 },
+  mbcd: { character_name: 1, item_name: 1, draw_pool: 1, time: 1, ts: 1 },
+  mbzz: { character_name: 1, item_name: 1, channel: 1, time: 1, ts: 1 }
+};
+
 async function queryTelevision(db, params) {
-  const kind = params.kind === 'mbcd' ? 'mbcd' : 'mbtv';
+  const kind = TV_FIELDS[params.kind] ? params.kind : 'mbtv';
   const parsed = splitServerPrefix(params.content);
   const server = await resolveServer(db, params.userId, params.server || parsed.server);
   const limit = boundedInt(params.limit, 20, 50);
   const query = buildTelevisionQuery(kind, parsed.filter);
   const collection = db.collection(`cl_${kind}_${server}`);
-  const projection = kind === 'mbtv'
-    ? { character_name: 1, reward: 1, dungeon_name: 1, channel: 1, time: 1, ts: 1 }
-    : { character_name: 1, item_name: 1, draw_pool: 1, time: 1, ts: 1 };
+  const projection = TV_PROJECTION[kind];
   const [total, rows] = await Promise.all([
     collection.countDocuments(query),
     collection.find(query, { projection }).sort({ ts: -1 }).limit(limit).toArray()
@@ -183,10 +189,14 @@ async function querySmuggler(db) {
   const [recent, latest, prediction] = await Promise.all([
     db.collection('cl_mabinogi_smuggler')
       .find(
-        { ts: { $gte: now - 60 * 60 * 1000 }, type: { $in: ['forecast', 'appear', 'disappear_forecast'] } },
+        {
+          ts: { $gte: now - 60 * 60 * 1000 },
+          type: { $in: ['forecast', 'appear', 'disappear_forecast'] },
+          area: { $ne: null }
+        },
         { projection: { type: 1, area: 1, item: 1, ts: 1, time: 1 } }
       )
-      .sort({ ts: 1 }).limit(20).toArray(),
+      .sort({ ts: 1 }).toArray(),
     db.collection('cl_mabinogi_smuggler')
       .findOne({}, { sort: { ts: -1 }, projection: { type: 1, area: 1, item: 1, ts: 1, time: 1 } }),
     db.collection('cl_mabinogi_smuggler_kr')
@@ -205,6 +215,14 @@ async function executeOperation(db, operation, params = {}) {
       return queryTelevision(db, { ...params, kind: 'mbtv' });
     case 'television.mbcd':
       return queryTelevision(db, { ...params, kind: 'mbcd' });
+    case 'television.mbzz':
+      return queryTelevision(db, { ...params, kind: 'mbzz' });
+    case 'television.mbtvs':
+      return require('./televisionStats').queryMbtvStats(db, params);
+    case 'television.mbcds':
+      return require('./televisionStats').queryMbcdStats(db, params);
+    case 'television.mbzzs':
+      return require('./televisionStats').queryMbzzStats(db, params);
     case 'optionset.where':
       return queryOptionsetWhere(db, params);
     case 'optionset.search':

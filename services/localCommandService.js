@@ -4,7 +4,7 @@ const logger = require('../utils/logger');
 const { normalizeModuleResult } = require('../utils/cqResultAdapter');
 const { getAnswer, setAnswer } = require('./qaStore');
 
-const COMMAND_PREFIXES = ['mblogs', 'mbi', 'mbd', 'opt', 'meu', 'mbtv', 'mbcd'];
+const COMMAND_PREFIXES = ['mblogs', 'mbtvs', 'mbcds', 'mbzzs', 'mbi', 'mbd', 'opt', 'meu', 'mbtv', 'mbcd', 'mbzz'];
 const DATABASE_TODO_MESSAGE = '该功能依赖尚未迁移的数据库，暂不可用。';
 const MODULE_TIMEOUT_MS = Number(process.env.LOCAL_COMMAND_TIMEOUT_MS || 120000);
 
@@ -163,7 +163,9 @@ async function executeMessage(content, context = {}) {
   if (/^(走私查询|超级走私查询)/.test(normalized)) {
     try {
       const { querySmuggler } = require('../features/mabinogi/remoteDataFeatures');
-      return ok(normalizeModuleResult(await querySmuggler()));
+      return ok(normalizeModuleResult(await querySmuggler({
+        superQuery: normalized.startsWith('超级走私查询')
+      })));
     } catch (error) {
       if (error?.name === 'BridgeUnavailableError') {
         return text('走私数据库桥接服务暂不可用');
@@ -224,7 +226,7 @@ async function executeCommand(command, content, context = {}) {
   }
   logger.command(normalizedCommand, normalizedContent);
 
-  if (!normalizedContent && !['mbtv', 'mbcd', 'mblogs'].includes(normalizedCommand)) {
+  if (!normalizedContent && !['mbtv', 'mbcd', 'mbzz', 'mbtvs', 'mbcds', 'mbzzs', 'mblogs'].includes(normalizedCommand)) {
     return text('请提供查询内容');
   }
 
@@ -258,10 +260,17 @@ async function executeCommand(command, content, context = {}) {
       return ok(normalizeModuleResult(result));
     }
 
-    if (normalizedCommand === 'mbtv' || normalizedCommand === 'mbcd') {
+    if (normalizedCommand === 'mbtv' || normalizedCommand === 'mbcd' || normalizedCommand === 'mbzz') {
       const { queryTelevision } = require('../features/mabinogi/remoteDataFeatures');
       return ok(normalizeModuleResult(
         await queryTelevision(normalizedCommand, normalizedContent, context)
+      ));
+    }
+
+    if (normalizedCommand === 'mbtvs' || normalizedCommand === 'mbcds' || normalizedCommand === 'mbzzs') {
+      const { queryTelevisionStats } = require('../features/mabinogi/remoteDataFeatures');
+      return ok(normalizeModuleResult(
+        await queryTelevisionStats(normalizedCommand, normalizedContent)
       ));
     }
 

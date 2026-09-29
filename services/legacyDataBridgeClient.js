@@ -38,7 +38,7 @@ function createClient(config = readConfig(), httpClient = axios) {
     throw new BridgeUnavailableError('数据库桥接配置无效', error);
   }
 
-  async function query(operation, params = {}) {
+  async function query(operation, params = {}, options = {}) {
     const transport = {
       secret: config.secret,
       method: 'POST',
@@ -48,7 +48,7 @@ function createClient(config = readConfig(), httpClient = axios) {
     let response;
     try {
       response = await httpClient.post(`${config.baseURL}${QUERY_PATH}`, envelope, {
-        timeout: config.timeout,
+        timeout: options.timeout || config.timeout,
         maxContentLength: 2 * 1024 * 1024,
         validateStatus: () => true,
         headers: { 'Content-Type': 'application/json' }
@@ -75,6 +75,7 @@ function createClient(config = readConfig(), httpClient = axios) {
   return {
     query,
     television: (kind, params) => query(`television.${kind}`, params),
+    televisionStats: (kind, params) => query(`television.${kind}`, params, { timeout: 60_000 }),
     optionsetWhere: (params) => query('optionset.where', params),
     optionsetSearch: (params) => query('optionset.search', params),
     mblogs: (params) => query('mblogs.query', params),

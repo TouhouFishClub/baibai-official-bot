@@ -33,6 +33,14 @@ test('统一解析有斜杠和无斜杠命令', () => {
     command: 'mblogs',
     content: '布里列赫'
   });
+  assert.deepEqual(parseCommand('mbtvs 稀有卷'), {
+    command: 'mbtvs',
+    content: '稀有卷'
+  });
+  assert.deepEqual(parseCommand('mbzz 铠甲'), {
+    command: 'mbzz',
+    content: '铠甲'
+  });
 });
 
 test('桥接未配置时数据库命令稳定降级', async () => {

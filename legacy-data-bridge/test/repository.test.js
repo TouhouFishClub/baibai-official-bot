@@ -24,6 +24,13 @@ test('电视查询只允许受控字段并支持服务器前缀', () => {
     query.$and.map((condition) => Object.keys(condition)[0]),
     ['item_name', 'character_name', 'draw_pool']
   );
+
+  const craft = buildTelevisionQuery('mbzz', '铠甲-角色');
+  assert.deepEqual(Object.keys(craft), ['$and']);
+  assert.deepEqual(
+    craft.$and.map((condition) => Object.keys(condition)[0]),
+    ['item_name', 'character_name']
+  );
 });
 
 test('用户输入会转义正则元字符且仅保留百分号通配', () => {

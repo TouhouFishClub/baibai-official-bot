@@ -2,11 +2,11 @@
 
 主服务不直接连接数据库。老服务器 `legacy-data-bridge/` 仅提供加密、白名单化的只读查询；下列写入和采集能力仍待迁移。
 
-## 洛奇电视：`mbtv`、`mbcd`
+## 洛奇电视：`mbtv`、`mbcd`、`mbzz`
 
 - 原实现：`baibaibot/ai/mabinogi/Television/`
-- 原数据：`cl_mbtv_*`、`cl_mbcd_*`、`cl_mabinogi_user_server`
-- 已完成：通过加密桥接查询 `cl_mbtv_*`、`cl_mbcd_*`，新服务器本地筛选展示；支持读取原用户选服记录。
+- 原数据：`cl_mbtv_*`、`cl_mbcd_*`、`cl_mbzz_*`、`cl_mabinogi_user_server`
+- 已完成：通过加密桥接查询 `cl_mbtv_*`、`cl_mbcd_*`、`cl_mbzz_*`，以及 `mbtvs`/`mbcds`/`mbzzs` 统计聚合；新服务器按原版样式展示。支持读取原用户选服记录。
 - 待完成：桥接为只读，显式服务器前缀不会写回用户偏好；实时采集仍由旧 bot 负责。
 - 验收待办：迁移 mabiPusher 写入、服务器偏好更新、保留期和数据源可信度审计。
 

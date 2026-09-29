@@ -4,7 +4,7 @@
 
 ## 安全边界
 
-- 只开放固定查询：mbtv、mbcd、释放卷国服出处、mblogs、走私。
+- 只开放固定查询：mbtv、mbcd、mbzz、mbtvs、mbcds、mbzzs、释放卷国服出处、mblogs、走私。
 - 不提供任意集合名、任意 Mongo 条件或写操作。
 - 请求和响应均使用 AES-256-GCM 加密，并绑定方法、路径、时间戳和 nonce。
 - 请求时间窗口默认 60 秒，重复 nonce 会被拒绝。

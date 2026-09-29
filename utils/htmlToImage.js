@@ -17,7 +17,9 @@ async function htmlToImage({
   html,
   output,
   puppeteerArgs,
-  selector = 'body'
+  selector = 'body',
+  skipCjkInject = false,
+  settleMs = 0
 } = {}) {
   if (!html) {
     throw new Error('htmlToImage 需要 html');
@@ -40,12 +42,16 @@ async function htmlToImage({
 
   try {
     const page = await browser.newPage();
-    await page.setContent(injectCjkFontHtml(html), { waitUntil: 'load' });
+    const pageHtml = skipCjkInject ? html : injectCjkFontHtml(html);
+    await page.setContent(pageHtml, { waitUntil: 'load' });
     await page.evaluate(async () => {
       if (document.fonts && document.fonts.ready) {
         await document.fonts.ready;
       }
     });
+    if (settleMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, settleMs));
+    }
 
     const size = await page.evaluate((targetSelector) => {
       const target = document.querySelector(targetSelector) || document.body;

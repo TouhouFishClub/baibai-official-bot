@@ -35,7 +35,7 @@ npm start
 - `GET /admin`：管理页面
 - `/put/*`：频道文章
 - `/auto-push/*`：自动推送
-- `/openapi/{mbi,mbd,opt,meu,mbtv,mbcd,mblogs}`：具名命令兼容接口
+- `/openapi/{mbi,mbd,opt,meu,mbtv,mbcd,mbzz,mbtvs,mbcds,mbzzs,mblogs}`：具名命令兼容接口
 
 消息 handler 直接把普通消息交给本地分发器，具名命令才进入对应命令处理器；不再存在旧版 `uni` 通用接口。
 
@@ -46,10 +46,11 @@ npm start
 - `opt <关键词>`：释放卷属性
 - `meu <关键词>`：装备升级
 - `boss` / `bosswork` / `boss工作表`：Boss 刷新时间表
-- `mbtv [关键词]` / `mbcd [关键词]`：旧数据库电视记录
+- `mbtv [关键词]` / `mbcd [关键词]` / `mbzz [关键词]`：出货、抽蛋、装备制造记录
+- `mbtvs` / `mbcds` / `mbzzs`：对应统计图
 - `optw <出处关键词>`：释放卷国服出处反查
 - `mblogs [角色/副本/Boss]`：公开 DPS 排行
-- `走私查询` / `超级走私查询`：走私观测和预测
+- `走私查询` / `超级走私查询`：走私观测；超级查询额外显示韩服预测
 - 其他文本：QA 查询或内置本地功能
 - `关键词|回答`：管理员添加/更新 QA
 - `关键词|`：管理员删除 QA

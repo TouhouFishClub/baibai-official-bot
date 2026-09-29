@@ -1,9 +1,30 @@
+const path = require('path');
+const { IMAGE_DATA } = require('../../baibaiConfigs');
 const { getBridgeClient } = require('../../services/legacyDataBridgeClient');
-const { renderDataTable } = require('./remoteDataRenderer');
+const { render } = require('./Television/render');
+const { parseMbtvsArgs, renderStatsImage: renderMbtvStatsImage } = require('./Television/mbtvStats');
+const { parseMbcdsArgs, renderStatsImage: renderMbcdStatsImage } = require('./Television/mbcdStats');
+const { parseMbzzsArgs, renderStatsImage: renderMbzzStatsImage } = require('./Television/mbzzStats');
+const { renderSmugglerFromBridge } = require('./smuggler/renderSmuggler');
 
-function formatTime(value) {
+function pad2(n) {
+  return n < 10 ? `0${n}` : `${n}`;
+}
+
+function formatRecordTime(value) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value || '') : date.toLocaleString('zh-CN', { hour12: false });
+  if (Number.isNaN(date.getTime())) return String(value || '');
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}
+
+function serverLabel(server) {
+  return server === 'yate' ? '亚特' : '猫服';
+}
+
+async function renderLegacyTable({ fileName, title, description, columns, rows }) {
+  const output = path.join(IMAGE_DATA, 'mabi_other', fileName);
+  await render(rows, { title, description, output, columns });
+  return `[CQ:image,file=${path.join('send', 'mabi_other', fileName)}]`;
 }
 
 async function queryTelevision(kind, content, context = {}) {
@@ -14,27 +35,104 @@ async function queryTelevision(kind, content, context = {}) {
   });
   if (!data.rows.length) return '未找到符合条件的记录';
 
-  const isMbtv = kind === 'mbtv';
-  return renderDataTable({
-    fileName: isMbtv ? 'MabiTV.png' : 'MabiGC.png',
-    title: `${isMbtv ? '出货记录' : '抽蛋记录'}：${data.server === 'yate' ? '亚特' : '猫服'}`,
-    description: `数据库匹配 ${data.total} 条，显示最新 ${data.rows.length} 条`,
-    columns: isMbtv
-      ? [
-        { label: '角色', key: 'character_name' },
-        { label: '物品', key: 'reward' },
-        { label: '地下城', key: 'dungeon_name' },
-        { label: '频道', key: 'channel' },
-        { label: '时间', key: 'time', format: (value, row) => formatTime(value || row.ts) }
-      ]
-      : [
-        { label: '角色', key: 'character_name' },
-        { label: '物品', key: 'item_name' },
-        { label: '手帕', key: 'draw_pool' },
-        { label: '时间', key: 'time', format: (value, row) => formatTime(value || row.ts) }
+  const layouts = {
+    mbtv: {
+      fileName: 'MabiTV.png',
+      title: `出货记录查询：${serverLabel(data.server)}`,
+      columns: [
+        { label: '角色名称', key: 'character_name' },
+        { label: '物品名称', key: 'reward' },
+        { label: '地下城名称', key: 'dungeon_name' },
+        { label: '时间', key: 'data_time', format: (time) => formatRecordTime(time) },
+        { label: '频道', key: 'channel' }
       ],
-    rows: data.rows
+      rows: data.rows.map((row) => ({
+        ...row,
+        data_time: row.time || new Date(row.ts)
+      }))
+    },
+    mbcd: {
+      fileName: 'MabiGC.png',
+      title: `抽蛋查询：${serverLabel(data.server)}`,
+      columns: [
+        { label: '角色名称', key: 'character_name' },
+        { label: '物品名称', key: 'item_name' },
+        { label: '时间', key: 'data_time', format: (time) => formatRecordTime(time) },
+        { label: '手帕名称', key: 'draw_pool' }
+      ],
+      rows: data.rows.map((row) => ({
+        ...row,
+        draw_pool: row.draw_pool || '未知手帕',
+        data_time: row.time || new Date(row.ts)
+      }))
+    },
+    mbzz: {
+      fileName: 'MabiZZ.png',
+      title: `装备制造查询：${serverLabel(data.server)}`,
+      columns: [
+        { label: '角色名称', key: 'character_name' },
+        { label: '物品名称', key: 'item_name' },
+        { label: '时间', key: 'data_time', format: (time) => formatRecordTime(time) },
+        { label: '频道', key: 'channel' }
+      ],
+      rows: data.rows.map((row) => ({
+        ...row,
+        data_time: row.time || new Date(row.ts)
+      }))
+    }
+  };
+
+  const layout = layouts[kind] || layouts.mbtv;
+  return renderLegacyTable({
+    ...layout,
+    description: `(MongoDB 总数: ${data.total})`
   });
+}
+
+function parseStatsArgs(kind, content) {
+  if (kind === 'mbtvs') return parseMbtvsArgs(content);
+  if (kind === 'mbcds') return parseMbcdsArgs(content);
+  return parseMbzzsArgs(content);
+}
+
+function statsFilter(kind, parsed) {
+  if (kind === 'mbtvs') return parsed.filter || '';
+  if (kind === 'mbcds') return parsed.keyword || '';
+  return parsed.itemFilter || '';
+}
+
+async function queryTelevisionStats(kind, content) {
+  const parsed = parseStatsArgs(kind, content);
+  if (parsed.error) return parsed.error;
+
+  const payload = await getBridgeClient().televisionStats(kind, {
+    startTs: parsed.start.getTime(),
+    endTs: parsed.end.getTime(),
+    filter: statsFilter(kind, parsed)
+  });
+
+  if (kind === 'mbcds') {
+    if (!payload.summary && !payload.character && !payload.pool && !payload.item) {
+      return '该时间范围内三维度均无数据（角色完全匹配 / 蛋池完全匹配 / 道具正则匹配）。可调整关键词或时间。';
+    }
+    const outputPath = path.join(IMAGE_DATA, 'mabi_other', 'MabiCDStats.png');
+    await renderMbcdStatsImage(payload, outputPath);
+    return `[CQ:image,file=${path.join('send', 'mabi_other', 'MabiCDStats.png')}]`;
+  }
+
+  if (!payload.totalRecords) {
+    return '该时间范围内没有匹配的记录，可放宽筛选或调整时间。';
+  }
+
+  if (kind === 'mbzzs') {
+    const outputPath = path.join(IMAGE_DATA, 'mabi_other', 'MabiZZStats.png');
+    await renderMbzzStatsImage(payload, outputPath);
+    return `[CQ:image,file=${path.join('send', 'mabi_other', 'MabiZZStats.png')}]`;
+  }
+
+  const outputPath = path.join(IMAGE_DATA, 'mabi_other', 'MabiTVStats.png');
+  await renderMbtvStatsImage(payload, outputPath);
+  return `[CQ:image,file=${path.join('send', 'mabi_other', 'MabiTVStats.png')}]`;
 }
 
 function parseMblogsInput(content) {
@@ -63,7 +161,7 @@ async function queryMblogs(content) {
   const params = parseMblogsInput(content);
   const data = await getBridgeClient().mblogs(params);
   if (!data.rows.length) return '未找到已同意公开排行的 DPS 记录';
-  return renderDataTable({
+  return renderLegacyTable({
     fileName: 'MabiLogs.png',
     title: `DPS 排行：${data.keyword}`,
     description: `显示前 ${data.rank} 条；匿名玩家已脱敏`,
@@ -73,62 +171,25 @@ async function queryMblogs(content) {
       { label: '副本', key: 'dungeonName' },
       { label: 'Boss', key: 'bossName' },
       { label: 'DPS', key: 'dps', format: (value) => Number(value || 0).toLocaleString() },
-      { label: '时间', key: 'recordTime', format: formatTime }
+      { label: '时间', key: 'recordTime', format: formatRecordTime }
     ],
     rows: data.rows
   });
 }
 
-function describeSmuggler(data) {
-  const latest = data.recent[data.recent.length - 1] || data.latest;
-  if (!latest) return [];
-  const typeNames = {
-    forecast: '即将出现',
-    appear: '出现中',
-    disappear_forecast: '即将消失'
-  };
-  const rows = [{
-    category: '国服当前观测',
-    status: typeNames[latest.type] || latest.type || '未知',
-    item: latest.item || '未知物品',
-    area: latest.area || '未知地区',
-    time: formatTime(latest.ts || latest.time)
-  }];
-  if (data.prediction) {
-    rows.push({
-      category: '韩服下次预测',
-      status: '预测',
-      item: data.prediction.goodsCN || data.prediction.goods || '未知物品',
-      area: data.prediction.positionCN || data.prediction.position || '未知地区',
-      time: formatTime(data.prediction.krTs || data.prediction.krTime)
-    });
-  }
-  return rows;
-}
-
-async function querySmuggler() {
+async function querySmuggler({ superQuery = false } = {}) {
   const data = await getBridgeClient().smuggler();
-  const rows = describeSmuggler(data);
-  if (!rows.length) return '当前没有检测到走私商人相关消息';
-  return renderDataTable({
-    fileName: 'smuggler.png',
-    title: '走私商人信息',
-    description: '数据由老服务器只读数据库桥接提供',
-    columns: [
-      { label: '类型', key: 'category' },
-      { label: '状态', key: 'status' },
-      { label: '物品', key: 'item' },
-      { label: '地区', key: 'area' },
-      { label: '时间', key: 'time' }
-    ],
-    rows
-  });
+  return renderSmugglerFromBridge(data, { includePrediction: superQuery });
 }
 
 module.exports = {
   queryTelevision,
+  queryTelevisionStats,
   queryMblogs,
   querySmuggler,
   parseMblogsInput,
-  describeSmuggler
+  parseMbtvsArgs,
+  parseMbcdsArgs,
+  parseMbzzsArgs,
+  formatRecordTime
 };

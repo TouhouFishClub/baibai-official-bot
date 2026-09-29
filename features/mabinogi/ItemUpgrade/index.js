@@ -8,6 +8,7 @@ const {
 const { IMAGE_DATA } = require(path.join(__dirname, '..', '..', '..', 'baibaiConfigs.js'))
 const { getBrowserLaunchOptions } = require('../../../utils/browserOptions')
 const { htmlToImage } = require('../../../utils/htmlToImage')
+const { getHanyiWenheiDataUrl } = require('../../../utils/hanyiwenhei')
 
 const parser = new xml2js.Parser()
 let filterDataStorage = {}
@@ -541,6 +542,10 @@ const renderImage = (targetItem, upgradeInfos, callback, otherMsg = '') => {
   <meta charset="UTF-8">
   <title>Title</title>
   <style>
+		@font-face {
+			font-family: 'HANYIWENHEI';
+			src: url(${getHanyiWenheiDataUrl()}) format('truetype');
+		}
     * {
       border: 0;
       padding: 0;
@@ -554,7 +559,7 @@ const renderImage = (targetItem, upgradeInfos, callback, otherMsg = '') => {
       padding: 20px;
       box-sizing: border-box;
       background: #222;
-			font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+			font-family: HANYIWENHEI;
     }
     .main-container {
     	min-height: 20px;
@@ -800,7 +805,8 @@ const renderImage = (targetItem, upgradeInfos, callback, otherMsg = '') => {
 	htmlToImage({
 		output,
 		puppeteerArgs: getBrowserLaunchOptions(),
-		html
+		html,
+		skipCjkInject: true
 	})
 		.then(() => {
 			console.log(`保存MabiItemUpgrade.png成功！`)
