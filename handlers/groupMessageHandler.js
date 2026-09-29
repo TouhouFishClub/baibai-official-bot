@@ -140,7 +140,9 @@ async function sendReplyToGroup(responseData, groupOpenid, messageId) {
       await sendTextToGroup(groupOpenid, responseData.message, null, messageId);
     }
   } catch (error) {
-    logger.error('发送群聊回复失败', error.message);
+    if (!error.alreadyLogged) {
+      logger.error('发送群聊回复失败', error);
+    }
   }
 }
 
@@ -183,10 +185,8 @@ async function uploadFileForGroup(groupOpenid, url, fileType) {
     return response.data.file_info;
     
   } catch (error) {
-    logger.error('上传文件失败', error.message);
-    if (error.response) {
-      logger.debug('QQ API 请求失败', { status: error.response.status });
-    }
+    logger.error('上传文件失败', error);
+    if (error && typeof error === 'object') error.alreadyLogged = true;
     throw error;
   }
 }

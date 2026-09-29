@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const { pathToFileURL } = require('url')
 const { IMAGE_DATA } = require(path.join(__dirname, '..', '..', '..', 'baibaiConfigs.js'))
 const { getBrowserLaunchOptions } = require('../../../utils/browserOptions')
 const logger = require('../../../utils/logger')
@@ -60,10 +61,10 @@ const scheduleBrowserClose = () => {
 }
 
 // ====== 模板路径 & 图片路径 ======
-const TEMPLATE_PATH = 'file:///' + path.join(__dirname, 'template.html').replace(/\\/g, '/')
-const SKILL_ICON_BASE = 'file:///' + path.join(__dirname, 'img', 'Skill').replace(/\\/g, '/') + '/'
+const TEMPLATE_PATH = pathToFileURL(path.join(__dirname, 'template.html')).href
+const SKILL_ICON_BASE = `${pathToFileURL(path.join(__dirname, 'img', 'Skill')).href}/`
 const ITEM_ICON_DIR = path.join(__dirname, 'img', 'item')
-const ITEM_ICON_BASE = 'file:///' + ITEM_ICON_DIR.replace(/\\/g, '/') + '/'
+const ITEM_ICON_BASE = `${pathToFileURL(ITEM_ICON_DIR).href}/`
 // 图片远程服务器（优先CN，回退KR）
 const ITEM_IMAGE_SERVERS = [
   'https://mabires2.pril.cc/invimage/cn',
