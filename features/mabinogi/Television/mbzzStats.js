@@ -1,6 +1,6 @@
 const { htmlToImage } = require('../../../utils/htmlToImage')
 const { getBrowserLaunchOptions } = require('../../../utils/browserOptions')
-const { getHanyiWenheiDataUrl, getChartJsSource } = require('../../../utils/hanyiwenhei')
+const { getHanyiWenheiDataUrl, getChartJsSource, wrapChartInitScript } = require('../../../utils/hanyiwenhei')
 
 const HANYIWENHEI = getHanyiWenheiDataUrl()
 const DATE_TOKEN = /^\d{4}-\d{1,2}-\d{1,2}$/
@@ -421,9 +421,9 @@ const renderStatsImage = async (payload, outputPath) => {
   </div>
   <script type="application/json" id="payload">${dataJson}</script>
   <script>
+    ${wrapChartInitScript(`
     Chart.defaults.color = '#9aa3b5';
     Chart.defaults.borderColor = 'rgba(255,255,255,0.12)';
-    Chart.defaults.font.family = 'HANYIWENHEI, sans-serif';
     const piePalette = ['#6C9BD2','#E8A87C','#C38D9E','#41B3A3','#E27D60','#8FC1A9','#F64C72','#99738E','#85CDCA','#EAB965'];
     function buildPieColors(count, labels) {
       const colors = [];
@@ -453,7 +453,7 @@ const renderStatsImage = async (payload, outputPath) => {
         plugins: {
           legend: {
             position: 'bottom',
-            labels: { boxWidth: 16, padding: 8, font: { size: 16 } }
+            labels: { boxWidth: 16, padding: 8, font: { size: 16, family: Chart.defaults.font.family } }
           }
         }
       }
@@ -496,6 +496,7 @@ const renderStatsImage = async (payload, outputPath) => {
         plugins: { legend: { position: 'top' } }
       }
     });
+    `)}
   </script>
 </body>
 </html>`
@@ -504,6 +505,7 @@ const renderStatsImage = async (payload, outputPath) => {
     html,
     output: outputPath,
     skipCjkInject: true,
+    waitForReady: true,
     settleMs: 500,
     puppeteerArgs: getBrowserLaunchOptions()
   })

@@ -1,5 +1,5 @@
 const { htmlToImage } = require('../../../utils/htmlToImage')
-const { getHanyiWenheiDataUrl } = require('../../../utils/hanyiwenhei')
+const { getHanyiWenheiDataUrl, getCjkFontFaceCss } = require('../../../utils/hanyiwenhei')
 
 const HANYIWENHEI = getHanyiWenheiDataUrl()
 
@@ -56,6 +56,7 @@ let html = `
 			font-family: 'HANYIWENHEI';
 			src: url(${HANYIWENHEI}) format('truetype');
 		}
+    ${getCjkFontFaceCss()}
     * {
       border: 0;
       padding: 0;
@@ -98,7 +99,7 @@ let html = `
     table {
       font-size: 20px;
       border-collapse: collapse;
-      font-family: HANYIWENHEI, sans-serif;
+      font-family: BaibaiCJK, "Microsoft YaHei", sans-serif;
 			width: 100%;
     }
     thead {

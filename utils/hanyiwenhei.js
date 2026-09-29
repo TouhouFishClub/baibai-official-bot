@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { getCjkFontFaceCss } = require('./cjkFont');
 
 const FONT_PATH = path.join(__dirname, '..', 'fonts', 'hk4e_zh-cn.ttf');
 const CHART_PATH = path.join(__dirname, '..', 'features', 'mabinogi', 'Television', 'chart.umd.min.js');
@@ -24,7 +25,36 @@ function getChartJsSource() {
   return chartSource;
 }
 
+function wrapChartInitScript(body) {
+  return [
+    '(async function () {',
+    '  try {',
+    '    if (document.fonts) {',
+    '      if (document.fonts.ready) await document.fonts.ready;',
+    "      var names = ['HANYIWENHEI', 'BaibaiCJK', 'Microsoft YaHei'];",
+    '      for (var i = 0; i < names.length; i++) {',
+    "        try { await document.fonts.load('12px ' + names[i]); } catch (e) {}",
+    "        try { await document.fonts.load('16px ' + names[i]); } catch (e) {}",
+    '      }',
+    '    }',
+    '  } catch (e) {}',
+    '  Chart.defaults.font.family = "HANYIWENHEI, BaibaiCJK, \'Microsoft YaHei\', sans-serif";',
+    '  if (Chart.defaults.plugins && Chart.defaults.plugins.legend && Chart.defaults.plugins.legend.labels) {',
+    '    Chart.defaults.plugins.legend.labels.font = Chart.defaults.plugins.legend.labels.font || {};',
+    '    Chart.defaults.plugins.legend.labels.font.family = Chart.defaults.font.family;',
+    '  }',
+    '  try {',
+    body,
+    '  } finally {',
+    "    document.documentElement.setAttribute('data-charts-ready', '1');",
+    '  }',
+    '})();'
+  ].join('\n');
+}
+
 module.exports = {
   getChartJsSource,
-  getHanyiWenheiDataUrl
+  getCjkFontFaceCss,
+  getHanyiWenheiDataUrl,
+  wrapChartInitScript
 };

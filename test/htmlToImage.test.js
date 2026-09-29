@@ -86,3 +86,24 @@ test('默认指定微软雅黑 msyh.ttc', () => {
     resetCjkFontCache();
   }
 });
+
+test('表格用的 CJK @font-face 不会用 !important 覆盖标题字体', () => {
+  const { getCjkFontFaceCss, getCjkFontCss, resetCjkFontCache } = require('../utils/cjkFont');
+  resetCjkFontCache();
+  const face = getCjkFontFaceCss();
+  const css = getCjkFontCss();
+  if (face) {
+    assert.match(face, /@font-face/);
+    assert.match(face, /BaibaiCJK/);
+    assert.doesNotMatch(face, /!important/);
+    assert.match(css, /!important/);
+  }
+});
+
+test('wrapChartInitScript 会等字体加载后再画图', () => {
+  const { wrapChartInitScript } = require('../utils/hanyiwenhei');
+  const out = wrapChartInitScript('new Chart();');
+  assert.match(out, /document\.fonts\.ready/);
+  assert.match(out, /data-charts-ready/);
+  assert.match(out, /new Chart\(\);/);
+});

@@ -19,7 +19,8 @@ async function htmlToImage({
   puppeteerArgs,
   selector = 'body',
   skipCjkInject = false,
-  settleMs = 0
+  settleMs = 0,
+  waitForReady = false
 } = {}) {
   if (!html) {
     throw new Error('htmlToImage 需要 html');
@@ -49,6 +50,12 @@ async function htmlToImage({
         await document.fonts.ready;
       }
     });
+    if (waitForReady) {
+      await page.waitForFunction(
+        () => document.documentElement.getAttribute('data-charts-ready') === '1',
+        { timeout: 20000 }
+      );
+    }
     if (settleMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, settleMs));
     }

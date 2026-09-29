@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
 
+let cachedFaceCss;
 let cachedCss;
 let warnedMissing = false;
 
@@ -111,9 +112,9 @@ function findCjkFontPath() {
   return [...projectFonts, ...systemFontPaths()].find((candidate) => fs.existsSync(candidate));
 }
 
-function getCjkFontCss() {
-  if (cachedCss !== undefined) {
-    return cachedCss;
+function getCjkFontFaceCss() {
+  if (cachedFaceCss !== undefined) {
+    return cachedFaceCss;
   }
 
   const fontPath = findCjkFontPath();
@@ -122,14 +123,25 @@ function getCjkFontCss() {
       warnedMissing = true;
       logger.warn('未找到中文字体，渲染图片中的汉字会变成方框。请将中文字体放到 fonts/ 目录，或设置 CJK_FONT_NAME / CJK_FONT_PATH');
     }
-    cachedCss = '';
-    return cachedCss;
+    cachedFaceCss = '';
+    return cachedFaceCss;
   }
 
   const { mime, format } = fontFaceFormat(fontPath);
   const data = fs.readFileSync(fontPath).toString('base64');
-  cachedCss = `@font-face{font-family:'BaibaiCJK';src:url(data:${mime};base64,${data}) format('${format}');font-weight:normal;font-style:normal;}html,body,*{font-family:'BaibaiCJK',"Noto Sans CJK SC","Microsoft YaHei",sans-serif !important;}`;
+  cachedFaceCss = `@font-face{font-family:'BaibaiCJK';src:url(data:${mime};base64,${data}) format('${format}');font-weight:normal;font-style:normal;}`;
   logger.info('已嵌入中文字体', { fontPath });
+  return cachedFaceCss;
+}
+
+function getCjkFontCss() {
+  if (cachedCss !== undefined) {
+    return cachedCss;
+  }
+  const face = getCjkFontFaceCss();
+  cachedCss = face
+    ? `${face}html,body,*{font-family:'BaibaiCJK',"Noto Sans CJK SC","Microsoft YaHei",sans-serif !important;}`
+    : '';
   return cachedCss;
 }
 
@@ -146,6 +158,7 @@ function injectCjkFontHtml(html) {
 }
 
 function resetCjkFontCache() {
+  cachedFaceCss = undefined;
   cachedCss = undefined;
   warnedMissing = false;
 }
@@ -155,6 +168,7 @@ module.exports = {
   PROJECT_FONTS_DIR,
   findCjkFontPath,
   getCjkFontCss,
+  getCjkFontFaceCss,
   injectCjkFontHtml,
   listProjectFontFiles,
   resetCjkFontCache

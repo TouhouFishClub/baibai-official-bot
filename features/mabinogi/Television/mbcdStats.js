@@ -1,6 +1,6 @@
 const { htmlToImage } = require('../../../utils/htmlToImage')
 const { getBrowserLaunchOptions } = require('../../../utils/browserOptions')
-const { getHanyiWenheiDataUrl, getChartJsSource } = require('../../../utils/hanyiwenhei')
+const { getHanyiWenheiDataUrl, getChartJsSource, wrapChartInitScript } = require('../../../utils/hanyiwenhei')
 
 const HANYIWENHEI = getHanyiWenheiDataUrl()
 const DATE_TOKEN = /^\d{4}-\d{1,2}-\d{1,2}$/
@@ -973,9 +973,9 @@ const renderStatsImage = async (payload, outputPath) => {
   ${poolBlock || ''}
   <script type="application/json" id="chartPayload">${dataJson}</script>
   <script>
+    ${wrapChartInitScript(`
     Chart.defaults.color = '#9aa3b5';
     Chart.defaults.borderColor = 'rgba(255,255,255,0.12)';
-    Chart.defaults.font.family = 'HANYIWENHEI, sans-serif';
     var piePalette = ['#6C9BD2','#E8A87C','#C38D9E','#41B3A3','#E27D60','#8FC1A9','#F64C72','#99738E','#85CDCA','#EAB965'];
     function buildPieColors(count, labels) {
       var colors = [];
@@ -1001,7 +1001,7 @@ const renderStatsImage = async (payload, outputPath) => {
         plugins: {
           legend: {
             position: 'bottom',
-            labels: { boxWidth: 14, padding: 6, font: { size: 14 } }
+            labels: { boxWidth: 14, padding: 6, font: { size: 14, family: Chart.defaults.font.family } }
           }
         }
       }
@@ -1051,7 +1051,7 @@ const renderStatsImage = async (payload, outputPath) => {
             y: { beginAtZero: true, ticks: { stepSize: 1 } }
           },
           plugins: {
-            legend: { position: 'top', labels: { boxWidth: 12, padding: 8, font: { size: 12 } } }
+            legend: { position: 'top', labels: { boxWidth: 12, padding: 8, font: { size: 12, family: Chart.defaults.font.family } } }
           }
         }
       });
@@ -1064,6 +1064,7 @@ const renderStatsImage = async (payload, outputPath) => {
       if (c.kind === 'line') return mkLine(el, c.line);
       return mkPie(el, c.slice);
     });
+    `)}
   </script>
 </body>
 </html>`
@@ -1072,6 +1073,7 @@ const renderStatsImage = async (payload, outputPath) => {
     html,
     output: outputPath,
     skipCjkInject: true,
+    waitForReady: true,
     settleMs: 500,
     puppeteerArgs: getBrowserLaunchOptions()
   })
