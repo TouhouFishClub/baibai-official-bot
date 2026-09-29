@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { getBrowserLaunchOptions } = require('./browserOptions');
+const { injectCjkFontHtml } = require('./cjkFont');
 const logger = require('./logger');
 
 let puppeteerPromise;
@@ -39,7 +40,12 @@ async function htmlToImage({
 
   try {
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'load' });
+    await page.setContent(injectCjkFontHtml(html), { waitUntil: 'load' });
+    await page.evaluate(async () => {
+      if (document.fonts && document.fonts.ready) {
+        await document.fonts.ready;
+      }
+    });
 
     const size = await page.evaluate((targetSelector) => {
       const target = document.querySelector(targetSelector) || document.body;

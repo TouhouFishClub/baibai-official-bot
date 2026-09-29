@@ -33,3 +33,56 @@ test('不会选用 snap 包内需要更高 GLIBC 的 chrome 二进制', () => {
   assert.equal(isSnapChromiumLauncher('/snap/bin/chromium'), true);
   assert.equal(isSnapChromiumLauncher('/usr/bin/google-chrome-stable'), false);
 });
+
+test('会把本地中文字体嵌入 HTML，避免 Chromium 缺字', () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const {
+    injectCjkFontHtml,
+    resetCjkFontCache
+  } = require('../utils/cjkFont');
+
+  const previous = process.env.CJK_FONT_PATH;
+  const fontPath = path.join(os.tmpdir(), `cjk-font-${process.pid}.ttf`);
+  fs.writeFileSync(fontPath, Buffer.from('font-bytes'));
+  process.env.CJK_FONT_PATH = fontPath;
+  resetCjkFontCache();
+
+  try {
+    const html = injectCjkFontHtml('<head></head><body>测试</body>');
+    assert.match(html, /@font-face/);
+    assert.match(html, /BaibaiCJK/);
+    assert.match(html, /<head><style>/);
+  } finally {
+    process.env.CJK_FONT_PATH = previous;
+    resetCjkFontCache();
+    fs.unlinkSync(fontPath);
+  }
+});
+
+test('项目 fonts 目录会被纳入中文字体候选', () => {
+  const { PROJECT_FONTS_DIR, listProjectFontFiles } = require('../utils/cjkFont');
+  assert.ok(PROJECT_FONTS_DIR.replace(/\\/g, '/').endsWith('/fonts'));
+  assert.ok(Array.isArray(listProjectFontFiles()));
+});
+
+test('默认指定微软雅黑 msyh.ttc', () => {
+  const previousName = process.env.CJK_FONT_NAME;
+  const previousPath = process.env.CJK_FONT_PATH;
+  delete process.env.CJK_FONT_PATH;
+  delete process.env.CJK_FONT_NAME;
+  const { DEFAULT_CJK_FONT_NAME, findCjkFontPath, resetCjkFontCache } = require('../utils/cjkFont');
+  resetCjkFontCache();
+  try {
+    assert.equal(DEFAULT_CJK_FONT_NAME, 'msyh.ttc');
+    const fontPath = findCjkFontPath();
+    if (fontPath) {
+      assert.match(fontPath.replace(/\\/g, '/'), /msyh\.ttc$/i);
+    }
+  } finally {
+    process.env.CJK_FONT_NAME = previousName;
+    process.env.CJK_FONT_PATH = previousPath;
+    resetCjkFontCache();
+  }
+});

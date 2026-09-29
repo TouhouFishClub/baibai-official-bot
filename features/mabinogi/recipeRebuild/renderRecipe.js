@@ -4,6 +4,7 @@ const { pathToFileURL } = require('url')
 const { IMAGE_DATA } = require(path.join(__dirname, '..', '..', '..', 'baibaiConfigs.js'))
 const { getBrowserLaunchOptions } = require('../../../utils/browserOptions')
 const { loadPuppeteer } = require('../../../utils/htmlToImage')
+const { getCjkFontCss } = require('../../../utils/cjkFont')
 const logger = require('../../../utils/logger')
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -267,6 +268,15 @@ const renderRecipeImage = async (product, recipes, allItems, recipesByProduct, s
 
     // 加载模板
     await page.goto(TEMPLATE_PATH, { waitUntil: 'domcontentloaded' })
+    const cjkFontCss = getCjkFontCss()
+    if (cjkFontCss) {
+      await page.addStyleTag({ content: cjkFontCss })
+      await page.evaluate(async () => {
+        if (document.fonts && document.fonts.ready) {
+          await document.fonts.ready;
+        }
+      })
+    }
 
     // 准备数据 - 将配方数据序列化
     const recipeData = recipes.map(serializeRecipeForRender)
