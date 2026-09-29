@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "groupId": "example-group",
+  "groupName": "示例群",
+  "updatedAt": "2000-01-01T00:00:00.000Z",
+  "entries": {
+    "示例关键词": {
+      "answer": "示例回复",
+      "authorId": "example-admin",
+      "authorName": "示例管理员",
+      "askCount": 0,
+      "createdAt": "2000-01-01T00:00:00.000Z",
+      "updatedAt": "2000-01-01T00:00:00.000Z"
+    }
+  }
+}

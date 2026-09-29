@@ -1,0 +1,1674 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QQ机器人论坛发帖管理</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Quill Editor CSS (HTML富文本编辑器) -->
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <!-- EasyMDE CSS (Markdown编辑器) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
+    
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .main-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .card {
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            border: none;
+            border-radius: 0.5rem;
+        }
+        .editor-container {
+            min-height: 400px;
+        }
+        .guild-selector, .channel-selector {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .channel-item {
+            padding: 0.5rem;
+            border: 1px solid #dee2e6;
+            border-radius: 0.25rem;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .channel-item:hover {
+            background-color: #e9ecef;
+        }
+        .channel-item.selected {
+            background-color: #0d6efd;
+            color: white;
+            border-color: #0d6efd;
+        }
+        .editor-tabs {
+            border-bottom: 1px solid #dee2e6;
+            margin-bottom: 1rem;
+        }
+        .editor-tab {
+            padding: 0.5rem 1rem;
+            border: none;
+            background: none;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+        }
+        .editor-tab.active {
+            border-bottom-color: #0d6efd;
+            color: #0d6efd;
+        }
+        .editor-content {
+            display: none;
+        }
+        .editor-content.active {
+            display: block;
+        }
+        .manual-post-inputs {
+            display: block;
+        }
+        .editor-content.active ~ .manual-post-inputs {
+            display: none;
+        }
+        #autopushEditor.active ~ .manual-post-inputs {
+            display: none;
+        }
+        .loading {
+            display: none;
+        }
+        .preview-container {
+            border: 1px solid #dee2e6;
+            border-radius: 0.25rem;
+            padding: 1rem;
+            background-color: white;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        /* 认证相关样式 */
+        .auth-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            margin: -20px -20px 20px -20px;
+            border-radius: 0.5rem 0.5rem 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .auth-header h4 {
+            margin: 0;
+            font-weight: 600;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .logout-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+        
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            color: white;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- 认证检查脚本 -->
+    <script>
+        (function patchFetchAuth() {
+            const originalFetch = window.fetch.bind(window);
+            window.fetch = function(input, init) {
+                init = init ? { ...init } : {};
+                const url = typeof input === 'string' ? input : (input && input.url) || '';
+                const token = localStorage.getItem('adminToken');
+                if (token && /^\/(auto-push|put|admin)\b/.test(url)) {
+                    const headers = new Headers(init.headers || {});
+                    if (!headers.has('Authorization')) {
+                        headers.set('Authorization', 'Bearer ' + token);
+                    }
+                    init.headers = headers;
+                }
+                return originalFetch(input, init);
+            };
+        })();
+
+        // 检查用户是否已登录
+        function checkAuth() {
+            const token = localStorage.getItem('adminToken');
+            if (!token) {
+                // 未登录，跳转到登录页面
+                window.location.href = '/login.html';
+                return;
+            }
+            
+            // 验证token有效性
+            fetch('/admin/verify-token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    // token无效，跳转到登录页面
+                    localStorage.removeItem('adminToken');
+                    window.location.href = '/login.html';
+                } else {
+                    // token有效，显示用户信息
+                    displayUserInfo(data.data);
+                }
+            })
+            .catch(() => {
+                // 网络错误，跳转到登录页面
+                localStorage.removeItem('adminToken');
+                window.location.href = '/login.html';
+            });
+        }
+        
+        // 显示用户信息
+        function displayUserInfo(userData) {
+            const userInfoEl = document.getElementById('userInfo');
+            if (userInfoEl && userData) {
+                userInfoEl.textContent = userData.username || '管理员';
+            }
+        }
+        
+        // 退出登录
+        function logout() {
+            if (confirm('确定要退出登录吗？')) {
+                localStorage.removeItem('adminToken');
+                window.location.href = '/login.html';
+            }
+        }
+        
+        // 页面加载时检查认证
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', checkAuth);
+        } else {
+            checkAuth();
+        }
+    </script>
+
+    <div class="main-container">
+        <!-- 认证头部 -->
+        <div class="auth-header">
+            <h4>
+                <i class="fas fa-robot me-2"></i>
+                QQ机器人论坛发帖管理
+            </h4>
+            <div class="user-info">
+                <span>欢迎，<span id="userInfo">管理员</span></span>
+                <a href="#" class="logout-btn" onclick="logout()">
+                    <i class="fas fa-sign-out-alt me-1"></i>
+                    退出登录
+                </a>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <p class="text-muted">使用此管理页面向QQ频道论坛发布文章，支持Markdown和HTML格式。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- 左侧：频道选择 -->
+            <div class="col-md-4">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-server me-2"></i>
+                            选择发帖频道
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <button id="loadGuilds" class="btn btn-outline-primary btn-sm mb-2">
+                            <i class="fas fa-refresh me-1"></i>
+                            加载频道服务器
+                        </button>
+                        
+                        
+                        <div id="guildsContainer">
+                            <p class="text-muted">点击上方按钮加载频道服务器列表</p>
+                        </div>
+                        
+                        <div id="channelsContainer" style="display: none;">
+                            <h6 class="mt-3 mb-2">子频道列表：</h6>
+                            <div id="channelsList"></div>
+                        </div>
+                        
+                        <div id="selectedChannel" class="mt-3" style="display: none;">
+                            <div class="alert alert-success">
+                                <strong>已选择频道：</strong>
+                                <div id="selectedChannelInfo"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧：编辑器 -->
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="editor-tabs">
+                            <button class="editor-tab active" data-editor="markdown">
+                                <i class="fab fa-markdown me-1"></i>
+                                Markdown编辑器
+                            </button>
+                            <button class="editor-tab" data-editor="html">
+                                <i class="fab fa-html5 me-1"></i>
+                                HTML编辑器
+                            </button>
+                            <button class="editor-tab" data-editor="autopush">
+                                <i class="fas fa-rss me-1"></i>
+                                自动推送
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <form id="postForm">
+                            <!-- 手动发帖相关输入 -->
+                            <div class="manual-post-inputs">
+                                <!-- 标题输入 -->
+                                <div class="mb-3">
+                                    <label for="postTitle" class="form-label">文章标题</label>
+                                    <input type="text" class="form-control" id="postTitle" placeholder="请输入文章标题" required>
+                                </div>
+
+                                <!-- Markdown编辑器 -->
+                                <div id="markdownEditor" class="editor-content active">
+                                    <label class="form-label">Markdown内容</label>
+                                    <textarea id="markdownTextarea"></textarea>
+                                </div>
+
+                                <!-- HTML编辑器 -->
+                                <div id="htmlEditor" class="editor-content">
+                                    <label class="form-label">HTML内容</label>
+                                    <div id="quillEditor" class="editor-container"></div>
+                                </div>
+                                <!-- 预览区域 -->
+                                <div class="mt-3">
+                                    <h6>预览：</h6>
+                                    <div id="previewContainer" class="preview-container">
+                                        <p class="text-muted">在编辑器中输入内容后，预览将显示在这里</p>
+                                    </div>
+                                </div>
+
+                                <!-- 发布按钮 -->
+                                <div class="mt-4 d-flex gap-2">
+                                    <button type="submit" class="btn btn-primary" id="publishBtn" disabled>
+                                        <i class="fas fa-paper-plane me-1"></i>
+                                        发布文章
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary" id="previewBtn">
+                                        <i class="fas fa-eye me-1"></i>
+                                        更新预览
+                                    </button>
+                                    <button type="button" class="btn btn-outline-warning" id="clearBtn">
+                                        <i class="fas fa-trash me-1"></i>
+                                        清空内容
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- 自动推送管理 -->
+                            <div id="autopushEditor" class="editor-content">
+                                <h5 class="mb-3">多配置自动推送管理</h5>
+                                
+                                <!-- 系统状态和操作 -->
+                                <div class="row mb-4">
+                                    <div class="col-md-8">
+                                        <div class="card">
+                                            <div class="card-body">
+                                                <h6 class="card-title">系统状态</h6>
+                                                <div id="systemStatus">
+                                                    <div class="d-flex align-items-center">
+                                                        <span class="badge bg-secondary me-2">加载中</span>
+                                                        <span class="text-muted">正在获取状态...</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="card">
+                                            <div class="card-body">
+                                                <h6 class="card-title">全局操作</h6>
+                                                <div class="btn-group w-100" role="group">
+                                                    <button type="button" class="btn btn-success btn-sm" id="addConfigBtn">新增配置</button>
+                                                    <button type="button" class="btn btn-warning btn-sm" id="stopAllBtn">停止全部</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 配置列表 -->
+                                <div class="card mb-4">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <h6 class="mb-0">推送配置列表</h6>
+                                        <button type="button" class="btn btn-sm btn-outline-primary" id="refreshConfigsBtn">
+                                            <i class="fas fa-refresh me-1"></i>刷新
+                                        </button>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="configsList">
+                                            <div class="text-center text-muted">
+                                                <i class="fas fa-spinner fa-spin me-2"></i>正在加载配置...
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 操作日志 -->
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h6 class="mb-0">操作日志</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="pushLogs" style="max-height: 300px; overflow-y: auto; background-color: #f8f9fa; padding: 10px; border-radius: 4px;">
+                                            <small class="text-muted">等待操作...</small>
+                                        </div>
+                                    </div>
+                                </div>
+
+
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 结果显示区域 -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div id="resultContainer" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading模态框 -->
+    <div class="modal" id="loadingModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-body text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2 mb-0">正在处理请求...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 配置编辑模态框 -->
+    <div class="modal fade" id="configModal" tabindex="-1" aria-labelledby="configModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="configModalLabel">编辑推送配置</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="configForm">
+                        <input type="hidden" id="configId">
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="configName" class="form-label">配置名称 *</label>
+                                    <input type="text" class="form-control" id="configName" placeholder="例如：洛奇游戏新闻" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="configChannelId" class="form-label">目标频道ID *</label>
+                                    <input type="text" class="form-control" id="configChannelId" placeholder="请输入频道ID" required>
+                                    <div class="form-text">选择左侧频道可自动填入</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="configInterval" class="form-label">检查间隔（分钟）</label>
+                                    <input type="number" class="form-control" id="configInterval" value="10" min="1" max="1440">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="configFormat" class="form-label">推送格式</label>
+                                    <select class="form-select" id="configFormat">
+                                        <option value="3">Markdown</option>
+                                        <option value="2">HTML</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="configTitlePrefix" class="form-label">标题前缀</label>
+                                    <input type="text" class="form-control" id="configTitlePrefix" value="[洛奇资讯]">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="configSourceName" class="form-label">源站名称</label>
+                                    <input type="text" class="form-control" id="configSourceName" value="洛奇官网" placeholder="例如：洛奇官网">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="configSourceUrl" class="form-label">源URL *</label>
+                            <div class="input-group">
+                                <input type="url" class="form-control" id="configSourceUrl" placeholder="https://example.com/news" required>
+                                <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                    预设
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="#" onclick="setConfigPreset('https://luoqi.tiancity.com/homepage/article/Class_224_Time_1.html', '洛奇官网', '[洛奇游戏]', '洛奇游戏新闻')">洛奇官网 - 游戏新闻</a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="setConfigPreset('https://luoqi.tiancity.com/homepage/article/Class_232_Time_1.html', '洛奇官网', '[洛奇活动]', '洛奇活动公告')">洛奇官网 - 活动公告</a></li>
+                                </ul>
+                            </div>
+                            <div class="form-text">支持任何包含日期格式 [YYYY-MM-DD] 的新闻列表页面</div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="saveConfigBtn">保存配置</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+
+    <!-- JavaScript库 -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <script>
+        // 全局变量
+        let selectedChannelId = null;
+        let selectedChannelName = '';
+        let currentEditor = 'markdown';
+        let quill = null;
+        let easyMDE = null;
+        let selectedTableSize = { rows: 1, cols: 1 };
+
+        // 初始化编辑器
+        function initEditors() {
+            // 初始化Quill HTML编辑器
+            quill = new Quill('#quillEditor', {
+                theme: 'snow',
+                placeholder: '请输入HTML内容...',
+                modules: {
+                    toolbar: [
+                        ['bold', 'italic', 'underline', 'strike'],
+                        ['blockquote', 'code-block'],
+                        [{ 'header': 1 }, { 'header': 2 }],
+                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                        [{ 'script': 'sub'}, { 'script': 'super' }],
+                        [{ 'indent': '-1'}, { 'indent': '+1' }],
+                        [{ 'direction': 'rtl' }],
+                        [{ 'size': ['small', false, 'large', 'huge'] }],
+                        [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+                        [{ 'color': [] }, { 'background': [] }],
+                        [{ 'font': [] }],
+                        [{ 'align': [] }],
+                        ['link', 'image'],
+                        ['clean']
+                    ]
+                }
+            });
+
+            // 初始化EasyMDE Markdown编辑器
+            easyMDE = new EasyMDE({
+                element: document.getElementById('markdownTextarea'),
+                placeholder: '请输入Markdown内容...',
+                spellChecker: false,
+                toolbar: [
+                    'bold', 'italic', 'heading', '|',
+                    'quote', 'unordered-list', 'ordered-list', '|',
+                    'link', 'image', '|',
+                    'preview', 'side-by-side', 'fullscreen', '|',
+                    'guide'
+                ],
+                status: ['autosave', 'lines', 'words', 'cursor']
+            });
+
+            // 监听内容变化
+            quill.on('text-change', updatePreview);
+            easyMDE.codemirror.on('change', updatePreview);
+        }
+
+        // 切换编辑器
+        function switchEditor(editorType) {
+            currentEditor = editorType;
+            
+            // 更新标签页状态
+            document.querySelectorAll('.editor-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelector(`[data-editor="${editorType}"]`).classList.add('active');
+            
+            // 切换编辑器内容
+            document.querySelectorAll('.editor-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`${editorType}Editor`).classList.add('active');
+            
+            // 控制手动发帖输入的显示/隐藏
+            const manualInputs = document.querySelector('.manual-post-inputs');
+            if (editorType === 'autopush') {
+                if (manualInputs) manualInputs.style.display = 'none';
+                loadSystemStatus();
+                loadConfigsList();
+            } else {
+                if (manualInputs) manualInputs.style.display = 'block';
+                updatePreview();
+                updatePublishButton();
+            }
+        }
+
+        // 更新预览
+        function updatePreview() {
+            const previewContainer = document.getElementById('previewContainer');
+            let content = '';
+            
+            if (currentEditor === 'markdown') {
+                const markdownContent = easyMDE.value();
+                if (markdownContent.trim()) {
+                    content = marked.parse(markdownContent);
+                } else {
+                    content = '<p class="text-muted">Markdown内容为空</p>';
+                }
+            } else {
+                const htmlContent = quill.root.innerHTML;
+                if (htmlContent.trim() && htmlContent !== '<p><br></p>') {
+                    content = htmlContent;
+                } else {
+                    content = '<p class="text-muted">HTML内容为空</p>';
+                }
+            }
+            
+            previewContainer.innerHTML = content;
+        }
+
+        // 加载频道服务器列表
+        async function loadGuilds() {
+            console.log('开始加载频道服务器...');
+            showLoading();
+            try {
+                const response = await fetch('/put/guilds');
+                const result = await response.json();
+                console.log('获取到响应:', result);
+                
+                if (result.success) {
+                    displayGuilds(result.data);
+                    console.log('频道服务器列表显示完成');
+                } else {
+                    showError('加载频道服务器失败: ' + result.message);
+                }
+            } catch (error) {
+                console.error('请求失败:', error);
+                showError('请求失败: ' + error.message);
+            } finally {
+                            hideLoading();
+            }
+        }
+
+        // 显示频道服务器列表
+        function displayGuilds(guilds) {
+            const container = document.getElementById('guildsContainer');
+            
+            if (guilds.length === 0) {
+                container.innerHTML = '<p class="text-muted">未找到任何频道服务器</p>';
+                return;
+            }
+            
+            const html = guilds.map(guild => `
+                <div class="channel-item" onclick="loadChannels('${guild.id}', '${guild.name}')">
+                    <div class="d-flex align-items-center">
+                        <i class="fas fa-server me-2"></i>
+                        <div>
+                            <div class="fw-bold">${guild.name}</div>
+                            <small class="text-muted">成员: ${guild.member_count}</small>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            container.innerHTML = html;
+        }
+
+        // 加载子频道列表
+        async function loadChannels(guildId, guildName) {
+            console.log('开始加载子频道...');
+            showLoading();
+            try {
+                const response = await fetch(`/put/channels?guild_id=${guildId}`);
+                const result = await response.json();
+                console.log('获取到子频道响应:', result);
+                
+                if (result.success) {
+                    displayChannels(result.data, guildName);
+                    console.log('子频道列表显示完成');
+                } else {
+                    showError('加载子频道失败: ' + result.message);
+                }
+            } catch (error) {
+                console.error('子频道请求失败:', error);
+                showError('请求失败: ' + error.message);
+            } finally {
+                            hideLoading();
+            }
+        }
+
+        // 显示子频道列表
+        function displayChannels(channels, guildName) {
+            const container = document.getElementById('channelsList');
+            const channelsContainer = document.getElementById('channelsContainer');
+            
+            // 过滤出论坛类型的频道
+            const forumChannels = channels.filter(channel => channel.type === 10007);
+            
+            if (forumChannels.length === 0) {
+                container.innerHTML = '<p class="text-muted">该服务器没有论坛类型的频道</p>';
+            } else {
+                const html = forumChannels.map(channel => `
+                    <div class="channel-item" onclick="selectChannel('${channel.id}', '${channel.name}', '${guildName}')">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-comments me-2"></i>
+                            <div>
+                                <div class="fw-bold">${channel.name}</div>
+                                <small class="text-muted">论坛频道 • ID: ${channel.id}</small>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+                
+                container.innerHTML = html;
+            }
+            
+            channelsContainer.style.display = 'block';
+        }
+
+        // 选择频道
+        function selectChannel(channelId, channelName, guildName) {
+            selectedChannelId = channelId;
+            selectedChannelName = channelName;
+            
+            // 更新选中状态
+            document.querySelectorAll('#channelsList .channel-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            event.currentTarget.classList.add('selected');
+            
+            // 显示选中信息
+            const selectedContainer = document.getElementById('selectedChannel');
+            const selectedInfo = document.getElementById('selectedChannelInfo');
+            
+            selectedInfo.innerHTML = `
+                <strong>${guildName}</strong> - ${channelName}<br>
+                <small>频道ID: ${channelId}</small>
+            `;
+            
+            selectedContainer.style.display = 'block';
+            
+            // 如果当前在自动推送页面，自动填入频道ID
+            if (currentEditor === 'autopush') {
+                document.getElementById('pushChannelId').value = channelId;
+                addPushLog(`已选择频道: ${channelName} (${channelId})`, 'info');
+            }
+            
+            // 启用发布按钮
+            updatePublishButton();
+        }
+
+        // 更新发布按钮状态
+        function updatePublishButton() {
+            const publishBtn = document.getElementById('publishBtn');
+            const title = document.getElementById('postTitle').value.trim();
+            const hasContent = currentEditor === 'markdown' ? 
+                easyMDE.value().trim() : 
+                quill.getText().trim();
+            
+            publishBtn.disabled = !selectedChannelId || !title || !hasContent;
+        }
+
+        // 发布文章
+        async function publishPost(event) {
+            event.preventDefault();
+            
+            if (!selectedChannelId) {
+                showError('请先选择要发布的频道');
+                return;
+            }
+            
+            const title = document.getElementById('postTitle').value.trim();
+            if (!title) {
+                showError('请输入文章标题');
+                return;
+            }
+            
+            let content, format;
+            if (currentEditor === 'markdown') {
+                content = easyMDE.value().trim();
+                format = 3; // Markdown
+            } else {
+                content = quill.root.innerHTML;
+                format = 2; // HTML
+            }
+            
+            if (!content || (currentEditor === 'html' && content === '<p><br></p>')) {
+                showError('请输入文章内容');
+                return;
+            }
+            
+            showLoading();
+            try {
+                const response = await fetch('/put/custom', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        channel_id: selectedChannelId,
+                        title: title,
+                        content: content,
+                        format: format
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showSuccess('文章发布成功！', result.data);
+                    // 清空表单
+                    document.getElementById('postForm').reset();
+                    easyMDE.value('');
+                    quill.setContents([]);
+                    updatePreview();
+                } else {
+                    showError('发布失败: ' + result.message);
+                }
+            } catch (error) {
+                showError('请求失败: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 清空内容
+        function clearContent() {
+            if (confirm('确定要清空所有内容吗？')) {
+                document.getElementById('postTitle').value = '';
+                easyMDE.value('');
+                quill.setContents([]);
+                updatePreview();
+                updatePublishButton();
+            }
+        }
+
+
+
+        // 自动推送相关函数
+        
+        // 添加日志
+        function addPushLog(message, type = 'info') {
+            const logsContainer = document.getElementById('pushLogs');
+            const timestamp = new Date().toLocaleTimeString();
+            const logClass = type === 'error' ? 'text-danger' : type === 'success' ? 'text-success' : 'text-info';
+            
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `<small class="${logClass}">[${timestamp}] ${message}</small>`;
+            
+            logsContainer.appendChild(logEntry);
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+
+        // 加载推送状态
+        async function loadPushStatus() {
+            try {
+                const response = await fetch('/auto-push/status');
+                const result = await response.json();
+                
+                if (result.success) {
+                    updatePushStatusDisplay(result.data);
+                } else {
+                    addPushLog('获取推送状态失败: ' + result.message, 'error');
+                }
+            } catch (error) {
+                addPushLog('获取推送状态失败: ' + error.message, 'error');
+            }
+        }
+
+        // 更新推送状态显示
+        function updatePushStatusDisplay(status) {
+            const statusContainer = document.getElementById('pushStatus');
+            const isEnabled = status.enabled;
+            const badgeClass = isEnabled ? 'bg-success' : 'bg-secondary';
+            const statusText = isEnabled ? '运行中' : '已停止';
+            
+            statusContainer.innerHTML = `
+                <div class="d-flex align-items-center mb-2">
+                    <span class="badge ${badgeClass} me-2">${statusText}</span>
+                    <span class="text-muted">推送服务状态</span>
+                </div>
+                <div class="row">
+                    <div class="col-sm-6">
+                        <small class="text-muted">已推送: ${status.pushedCount || 0} 篇</small>
+                    </div>
+                    <div class="col-sm-6">
+                        <small class="text-muted">检查间隔: ${Math.round(status.checkInterval / 60000)} 分钟</small>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 加载推送配置
+        async function loadPushConfig() {
+            try {
+                const response = await fetch('/auto-push/config');
+                const result = await response.json();
+                
+                if (result.success) {
+                    const config = result.data;
+                    document.getElementById('pushChannelId').value = config.channelId || '';
+                    document.getElementById('pushInterval').value = Math.round(config.checkInterval / 60000);
+                    document.getElementById('pushFormat').value = config.format || 3;
+                    document.getElementById('titlePrefix').value = config.titlePrefix || '[洛奇资讯]';
+                    document.getElementById('sourceName').value = config.sourceName || '洛奇官网';
+                    document.getElementById('sourceUrl').value = config.sourceUrl || 'https://luoqi.tiancity.com/homepage/article/Class_232_Time_1.html';
+                }
+            } catch (error) {
+                addPushLog('获取推送配置失败: ' + error.message, 'error');
+            }
+        }
+
+        // 保存推送配置
+        async function savePushConfig() {
+            try {
+                const config = {
+                    channelId: document.getElementById('pushChannelId').value.trim(),
+                    checkInterval: parseInt(document.getElementById('pushInterval').value) * 60000,
+                    format: parseInt(document.getElementById('pushFormat').value),
+                    titlePrefix: document.getElementById('titlePrefix').value.trim(),
+                    sourceName: document.getElementById('sourceName').value.trim(),
+                    sourceUrl: document.getElementById('sourceUrl').value.trim()
+                };
+                
+                if (!config.channelId) {
+                    addPushLog('请输入频道ID', 'error');
+                    return;
+                }
+                
+                if (!config.sourceUrl) {
+                    addPushLog('请输入源URL', 'error');
+                    return;
+                }
+                
+                // 验证URL格式
+                try {
+                    new URL(config.sourceUrl);
+                } catch (e) {
+                    addPushLog('源URL格式无效', 'error');
+                    return;
+                }
+                
+                const response = await fetch('/auto-push/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    addPushLog('推送配置保存成功', 'success');
+                    loadPushStatus();
+                } else {
+                    addPushLog('保存配置失败: ' + result.message, 'error');
+                }
+            } catch (error) {
+                addPushLog('保存配置失败: ' + error.message, 'error');
+            }
+        }
+
+        // 启动推送
+        async function startPush() {
+            try {
+                showLoading();
+                const response = await fetch('/auto-push/start', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    addPushLog('自动推送已启动', 'success');
+                    loadPushStatus();
+                } else {
+                    addPushLog('启动失败: ' + result.message, 'error');
+                }
+            } catch (error) {
+                addPushLog('启动失败: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 停止推送
+        async function stopPush() {
+            try {
+                showLoading();
+                const response = await fetch('/auto-push/stop', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    addPushLog('自动推送已停止', 'success');
+                    loadPushStatus();
+                } else {
+                    addPushLog('停止失败: ' + result.message, 'error');
+                }
+            } catch (error) {
+                addPushLog('停止失败: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 手动检查推送
+        async function manualCheck() {
+            try {
+                showLoading();
+                addPushLog('开始手动检查推送...', 'info');
+                
+                const response = await fetch('/auto-push/manual-check', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    const summary = result.data.summary;
+                    addPushLog(`检查完成: 成功 ${summary.success} 篇，失败 ${summary.failed} 篇`, 'success');
+                    
+                    // 显示详细结果
+                    if (result.data.results.length > 0) {
+                        result.data.results.forEach(r => {
+                            if (r.success) {
+                                addPushLog(`✓ 推送成功: ${r.post.title}`, 'success');
+                            } else if (r.reason === 'already_exists') {
+                                addPushLog(`- 已存在: ${r.post.title}`, 'info');
+                            } else {
+                                addPushLog(`✗ 推送失败: ${r.post.title} - ${r.error}`, 'error');
+                            }
+                        });
+                    }
+                    
+                    loadPushStatus();
+                } else {
+                    addPushLog('手动检查失败: ' + result.message, 'error');
+                }
+            } catch (error) {
+                addPushLog('手动检查失败: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 测试抓取
+        async function testCrawl() {
+            try {
+                showLoading();
+                
+                // 获取当前配置的URL或使用输入框中的URL
+                const testUrl = document.getElementById('sourceUrl').value.trim();
+                if (!testUrl) {
+                    addPushLog('请先配置源URL', 'error');
+                    return;
+                }
+                
+                addPushLog(`开始测试抓取: ${testUrl}`, 'info');
+                
+                const response = await fetch(`/auto-push/test-crawl?url=${encodeURIComponent(testUrl)}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    const data = result.data;
+                    addPushLog(`抓取成功: 今日 ${data.summary.todayCount} 篇，最新 ${data.summary.latestCount} 篇`, 'success');
+                    addPushLog(`源地址: ${data.sourceUrl}`, 'info');
+                    
+                    // 显示今日帖子
+                    if (data.todayPosts.length > 0) {
+                        addPushLog('今日帖子:', 'info');
+                        data.todayPosts.forEach(post => {
+                            addPushLog(`  • ${post.title} (${post.date})`, 'info');
+                        });
+                    }
+                    
+                    // 显示最新帖子
+                    if (data.latestPosts.length > 0) {
+                        addPushLog('最新帖子:', 'info');
+                        data.latestPosts.slice(0, 3).forEach(post => {
+                            addPushLog(`  • ${post.title} (${post.date})`, 'info');
+                        });
+                    }
+                    
+                    if (data.todayPosts.length === 0 && data.latestPosts.length === 0) {
+                        addPushLog('未找到任何帖子，请检查URL是否正确', 'error');
+                    }
+                } else {
+                    addPushLog('抓取测试失败: ' + result.message, 'error');
+                }
+            } catch (error) {
+                addPushLog('抓取测试失败: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 清除推送记录
+        async function clearPushRecords() {
+            if (!confirm('确定要清除所有推送记录吗？')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/auto-push/clear-records', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    addPushLog('推送记录已清除', 'success');
+                    loadPushStatus();
+                } else {
+                    addPushLog('清除记录失败: ' + result.message, 'error');
+                }
+            } catch (error) {
+                addPushLog('清除记录失败: ' + error.message, 'error');
+            }
+        }
+
+        // 设置预设URL
+        function setPresetUrl(url, sourceName, titlePrefix) {
+            document.getElementById('sourceUrl').value = url;
+            document.getElementById('sourceName').value = sourceName;
+            document.getElementById('titlePrefix').value = titlePrefix;
+            
+            addPushLog(`已设置预设配置: ${sourceName}`, 'info');
+            addPushLog(`URL: ${url}`, 'info');
+        }
+
+        // 设置配置预设
+        function setConfigPreset(url, sourceName, titlePrefix, configName) {
+            document.getElementById('configSourceUrl').value = url;
+            document.getElementById('configSourceName').value = sourceName;
+            document.getElementById('configTitlePrefix').value = titlePrefix;
+            document.getElementById('configName').value = configName;
+        }
+
+        // 加载系统状态
+        async function loadSystemStatus() {
+            try {
+                const response = await fetch('/auto-push/system-status');
+                const result = await response.json();
+                
+                if (result.success) {
+                    const status = result.data;
+                    const statusHtml = `
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div>
+                                <span class="badge ${status.runningConfigs > 0 ? 'bg-success' : 'bg-secondary'} me-2">
+                                    ${status.runningConfigs > 0 ? '运行中' : '已停止'}
+                                </span>
+                                <span class="text-muted">
+                                    配置总数: ${status.totalConfigs} | 运行中: ${status.runningConfigs}
+                                </span>
+                            </div>
+                            <small class="text-muted">
+                                ${new Date().toLocaleString()}
+                            </small>
+                        </div>
+                    `;
+                    document.getElementById('systemStatus').innerHTML = statusHtml;
+                } else {
+                    throw new Error(result.message || '获取系统状态失败');
+                }
+            } catch (error) {
+                console.error('加载系统状态失败:', error);
+                document.getElementById('systemStatus').innerHTML = `
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-danger me-2">错误</span>
+                        <span class="text-danger">${error.message}</span>
+                    </div>
+                `;
+            }
+        }
+
+        // 加载配置列表
+        async function loadConfigsList() {
+            try {
+                const response = await fetch('/auto-push/configs');
+                const result = await response.json();
+                
+                if (result.success) {
+                    const configs = result.data.configs || [];
+                    const configsListEl = document.getElementById('configsList');
+                    
+                    if (configs.length === 0) {
+                        configsListEl.innerHTML = `
+                            <div class="text-center text-muted py-4">
+                                <i class="fas fa-inbox fa-2x mb-3 d-block"></i>
+                                <p>暂无推送配置</p>
+                                <button type="button" class="btn btn-primary btn-sm" onclick="showConfigModal()">
+                                    <i class="fas fa-plus me-1"></i>创建第一个配置
+                                </button>
+                            </div>
+                        `;
+                    } else {
+                        const configsHtml = configs.map(config => {
+                            const isRunning = config.status === 'running' || config.running === true;
+                            const statusBadge = isRunning ? 
+                                '<span class="badge bg-success">运行中</span>' : 
+                                '<span class="badge bg-secondary">已停止</span>';
+                            
+                            const actions = isRunning ? 
+                                `<button class="btn btn-warning btn-sm me-1" onclick="stopConfig('${config.id}')">停止</button>` :
+                                `<button class="btn btn-success btn-sm me-1" onclick="startConfig('${config.id}')">启动</button>`;
+                            
+                            return `
+                                <div class="card mb-2">
+                                    <div class="card-body py-2">
+                                        <div class="row align-items-center">
+                                            <div class="col-md-3">
+                                                <h6 class="mb-1">${config.name}</h6>
+                                                <small class="text-muted">${config.sourceName}</small>
+                                            </div>
+                                            <div class="col-md-2">
+                                                ${statusBadge}
+                                            </div>
+                                            <div class="col-md-2">
+                                                <small class="text-muted">
+                                                    ${Math.round(config.checkInterval / 60000)}分钟/次
+                                                </small>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <small class="text-muted text-truncate d-block" style="max-width: 200px;">
+                                                    频道: ${config.channelId}
+                                                </small>
+                                            </div>
+                                            <div class="col-md-2 text-end">
+                                                <div class="btn-group btn-group-sm">
+                                                    ${actions}
+                                                    <button class="btn btn-outline-primary btn-sm me-1" onclick="editConfig('${config.id}')">编辑</button>
+                                                    <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                                                        <i class="fas fa-ellipsis-v"></i>
+                                                    </button>
+                                                    <ul class="dropdown-menu">
+                                                        <li><a class="dropdown-item" href="#" onclick="testConfig('${config.id}')">测试抓取</a></li>
+                                                        <li><a class="dropdown-item" href="#" onclick="manualCheckConfig('${config.id}')">手动检查</a></li>
+                                                        <li><a class="dropdown-item" href="#" onclick="clearConfigRecords('${config.id}')">清除记录</a></li>
+                                                        <li><hr class="dropdown-divider"></li>
+                                                        <li><a class="dropdown-item text-danger" href="#" onclick="deleteConfig('${config.id}')">删除配置</a></li>
+                                                    </ul>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                        
+                        configsListEl.innerHTML = configsHtml;
+                    }
+                } else {
+                    throw new Error(result.message || '获取配置列表失败');
+                }
+            } catch (error) {
+                console.error('加载配置列表失败:', error);
+                document.getElementById('configsList').innerHTML = `
+                    <div class="text-center text-danger py-4">
+                        <i class="fas fa-exclamation-triangle fa-2x mb-3 d-block"></i>
+                        <p>加载配置列表失败: ${error.message}</p>
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadConfigsList()">
+                            <i class="fas fa-refresh me-1"></i>重试
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        // 测试详情抓取
+        async function testDetail() {
+            try {
+                showLoading();
+                
+                // 先进行抓取测试获取帖子URL
+                const testUrl = document.getElementById('sourceUrl').value.trim();
+                if (!testUrl) {
+                    addPushLog('请先配置源URL', 'error');
+                    return;
+                }
+                
+                addPushLog(`开始测试详情抓取...`, 'info');
+                
+                // 先获取列表
+                const crawlResponse = await fetch(`/auto-push/test-crawl?url=${encodeURIComponent(testUrl)}&limit=1`);
+                const crawlResult = await crawlResponse.json();
+                
+                if (!crawlResult.success) {
+                    addPushLog('获取帖子列表失败: ' + crawlResult.message, 'error');
+                    return;
+                }
+                
+                const posts = crawlResult.data.latestPosts;
+                if (posts.length === 0) {
+                    addPushLog('没有找到可测试的帖子', 'error');
+                    return;
+                }
+                
+                const testPost = posts[0];
+                addPushLog(`测试帖子: ${testPost.title}`, 'info');
+                addPushLog(`详情URL: ${testPost.url}`, 'info');
+                
+                // 测试详情抓取
+                const detailResponse = await fetch(`/auto-push/test-detail?url=${encodeURIComponent(testPost.url)}`);
+                const detailResult = await detailResponse.json();
+                
+                if (detailResult.success) {
+                    const data = detailResult.data;
+                    addPushLog(`详情抓取成功!`, 'success');
+                    addPushLog(`标题: ${data.title}`, 'info');
+                    addPushLog(`HTML内容长度: ${data.htmlLength} 字符`, 'info');
+                    addPushLog(`文本预览: ${data.textPreview}`, 'info');
+                    addPushLog(`有内容: ${data.hasContent ? '是' : '否'}`, data.hasContent ? 'success' : 'error');
+                } else {
+                    addPushLog('详情抓取失败: ' + detailResult.message, 'error');
+                }
+                
+            } catch (error) {
+                addPushLog('详情测试失败: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 配置管理函数
+        function showConfigModal(configId = null) {
+            const modal = new bootstrap.Modal(document.getElementById('configModal'));
+            const modalTitle = document.getElementById('configModalLabel');
+            
+            if (configId) {
+                modalTitle.textContent = '编辑推送配置';
+                loadConfigData(configId);
+            } else {
+                modalTitle.textContent = '新增推送配置';
+                clearConfigForm();
+            }
+            
+            modal.show();
+        }
+
+        function clearConfigForm() {
+            document.getElementById('configId').value = '';
+            document.getElementById('configName').value = '';
+            document.getElementById('configChannelId').value = '';
+            document.getElementById('configInterval').value = '10';
+            document.getElementById('configFormat').value = '3';
+            document.getElementById('configTitlePrefix').value = '[洛奇资讯]';
+            document.getElementById('configSourceName').value = '洛奇官网';
+            document.getElementById('configSourceUrl').value = '';
+        }
+
+        async function loadConfigData(configId) {
+            try {
+                const response = await fetch(`/auto-push/configs/${configId}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    const config = result.data;
+                    document.getElementById('configId').value = config.id;
+                    document.getElementById('configName').value = config.name;
+                    document.getElementById('configChannelId').value = config.channelId;
+                    document.getElementById('configInterval').value = Math.round(config.checkInterval / 60000);
+                    document.getElementById('configFormat').value = config.format;
+                    document.getElementById('configTitlePrefix').value = config.titlePrefix || '[洛奇资讯]';
+                    document.getElementById('configSourceName').value = config.sourceName || '洛奇官网';
+                    document.getElementById('configSourceUrl').value = config.sourceUrl;
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                alert('加载配置失败: ' + error.message);
+            }
+        }
+
+        async function saveConfig() {
+            try {
+                const configData = {
+                    id: document.getElementById('configId').value || undefined,
+                    name: document.getElementById('configName').value,
+                    channelId: document.getElementById('configChannelId').value,
+                    checkInterval: parseInt(document.getElementById('configInterval').value) * 60000,
+                    format: parseInt(document.getElementById('configFormat').value),
+                    titlePrefix: document.getElementById('configTitlePrefix').value,
+                    sourceName: document.getElementById('configSourceName').value,
+                    sourceUrl: document.getElementById('configSourceUrl').value
+                };
+
+                // 基本验证
+                if (!configData.name || !configData.channelId || !configData.sourceUrl) {
+                    alert('请填写必需字段（配置名称、频道ID、源URL）');
+                    return;
+                }
+
+                showLoading();
+                const response = await fetch('/auto-push/configs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(configData)
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('configModal'));
+                    modal.hide();
+                    await loadConfigsList();
+                    addPushLog(`配置${configData.id ? '更新' : '创建'}成功: ${configData.name}`, 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                alert('保存配置失败: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function startConfig(configId) {
+            try {
+                showLoading();
+                const response = await fetch(`/auto-push/configs/${configId}/start`, { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    await loadConfigsList();
+                    await loadSystemStatus();
+                    addPushLog(`配置启动成功: ${result.data.name}`, 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                addPushLog('启动配置失败: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function stopConfig(configId) {
+            try {
+                showLoading();
+                const response = await fetch(`/auto-push/configs/${configId}/stop`, { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    await loadConfigsList();
+                    await loadSystemStatus();
+                    addPushLog(`配置停止成功: ${result.data.name}`, 'info');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                addPushLog('停止配置失败: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function deleteConfig(configId) {
+            if (!confirm('确定要删除这个配置吗？此操作不可撤销。')) {
+                return;
+            }
+
+            try {
+                showLoading();
+                const response = await fetch(`/auto-push/configs/${configId}`, { method: 'DELETE' });
+                const result = await response.json();
+
+                if (result.success) {
+                    await loadConfigsList();
+                    await loadSystemStatus();
+                    addPushLog('配置删除成功', 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                addPushLog('删除配置失败: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function editConfig(configId) {
+            showConfigModal(configId);
+        }
+
+        async function manualCheckConfig(configId) {
+            try {
+                showLoading();
+                const response = await fetch(`/auto-push/configs/${configId}/check`, { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    addPushLog(`手动检查完成: ${result.data.message || '检查成功'}`, 'info');
+                    if (result.data.newPosts) {
+                        addPushLog(`发现 ${result.data.newPosts} 篇新帖子`, 'success');
+                    }
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                addPushLog('手动检查失败: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function clearConfigRecords(configId) {
+            if (!confirm('确定要清除这个配置的推送记录吗？')) {
+                return;
+            }
+
+            try {
+                showLoading();
+                const response = await fetch(`/auto-push/configs/${configId}/clear-records`, { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    addPushLog('推送记录清除成功', 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                addPushLog('清除记录失败: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function testConfig(configId) {
+            try {
+                showLoading();
+                const config = await fetch(`/auto-push/configs/${configId}`).then(r => r.json());
+                if (!config.success) {
+                    throw new Error('获取配置失败');
+                }
+
+                const response = await fetch(`/auto-push/test-crawl?url=${encodeURIComponent(config.data.sourceUrl)}&limit=5`);
+                const result = await response.json();
+
+                if (result.success) {
+                    addPushLog(`测试抓取完成: ${config.data.name}`, 'info');
+                    addPushLog(`URL: ${config.data.sourceUrl}`, 'info');
+                    addPushLog(`今日帖子: ${result.data.todayPosts.length} 篇`, 'info');
+                    addPushLog(`最新帖子: ${result.data.latestPosts.length} 篇`, 'info');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                addPushLog('测试抓取失败: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function stopAllConfigs() {
+            if (!confirm('确定要停止所有推送配置吗？')) {
+                return;
+            }
+
+            try {
+                showLoading();
+                const response = await fetch('/auto-push/stop-all', { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    await loadConfigsList();
+                    await loadSystemStatus();
+                    addPushLog('所有推送已停止', 'info');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                addPushLog('停止全部失败: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 全局模态框实例
+        let loadingModal = null;
+
+        // 显示加载状态
+        function showLoading() {
+            if (!loadingModal) {
+                loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'), {
+                    backdrop: 'static',
+                    keyboard: false
+                });
+            }
+            loadingModal.show();
+        }
+
+        // 隐藏加载状态
+        function hideLoading() {
+    
+            
+            // 方法1: 使用Bootstrap模态框API
+            if (loadingModal) {
+                console.log('使用Bootstrap API隐藏模态框');
+                loadingModal.hide();
+            }
+            
+            // 方法2: 强制隐藏（备用方案）
+            setTimeout(() => {
+                console.log('执行强制隐藏逻辑');
+                const modalElement = document.getElementById('loadingModal');
+                
+                // 强制移除所有模态框相关的类和样式
+                modalElement.classList.remove('show', 'fade');
+                modalElement.style.display = 'none';
+                modalElement.setAttribute('aria-hidden', 'true');
+                modalElement.removeAttribute('aria-modal');
+                
+                // 移除body上的模态框类
+                document.body.classList.remove('modal-open');
+                
+                // 移除所有背景遮罩
+                const backdrops = document.querySelectorAll('.modal-backdrop');
+                backdrops.forEach(backdrop => backdrop.remove());
+                
+                // 重置body样式
+                document.body.style.overflow = '';
+                document.body.style.paddingRight = '';
+                
+                console.log('强制隐藏完成');
+            }, 50);
+        }
+
+        // 显示成功消息
+        function showSuccess(message, data) {
+            const container = document.getElementById('resultContainer');
+            container.innerHTML = `
+                <div class="alert alert-success alert-dismissible fade show">
+                    <i class="fas fa-check-circle me-2"></i>
+                    <strong>成功！</strong> ${message}
+                    ${data ? `<br><small>任务ID: ${data.task_id} | 时间: ${new Date(data.create_time * 1000).toLocaleString()}</small>` : ''}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            container.style.display = 'block';
+        }
+
+        // 显示错误消息
+        function showError(message) {
+            const container = document.getElementById('resultContainer');
+            container.innerHTML = `
+                <div class="alert alert-danger alert-dismissible fade show">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    <strong>错误！</strong> ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            container.style.display = 'block';
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initEditors();
+            
+            // 绑定事件
+            document.getElementById('loadGuilds').addEventListener('click', loadGuilds);
+    
+            document.getElementById('postForm').addEventListener('submit', publishPost);
+            document.getElementById('previewBtn').addEventListener('click', updatePreview);
+            document.getElementById('clearBtn').addEventListener('click', clearContent);
+            document.getElementById('postTitle').addEventListener('input', updatePublishButton);
+            
+            // 多配置自动推送相关事件
+            document.getElementById('addConfigBtn').addEventListener('click', () => showConfigModal());
+            document.getElementById('stopAllBtn').addEventListener('click', stopAllConfigs);
+            document.getElementById('refreshConfigsBtn').addEventListener('click', () => {
+                loadSystemStatus();
+                loadConfigsList();
+            });
+            document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
+
+            
+            // 编辑器切换事件
+            document.querySelectorAll('.editor-tab').forEach(tab => {
+                tab.addEventListener('click', () => switchEditor(tab.dataset.editor));
+            });
+        });
+    </script>
+</body>
+</html>
+

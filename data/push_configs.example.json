@@ -1,0 +1,13 @@
+[
+  {
+    "id": "example_config",
+    "name": "洛奇官网自动推送示例",
+    "enabled": false,
+    "channelId": "你的频道ID",
+    "checkInterval": 1800000,
+    "sourceUrl": "https://luoqi.tiancity.com/homepage/article/Class_232_Time_1.html",
+    "format": 3,
+    "titlePrefix": "[洛奇资讯]",
+    "sourceName": "洛奇官网"
+  }
+]

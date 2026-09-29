@@ -1,0 +1,5 @@
+{
+    "channel_exchange_group": "CHANNEL_QA_NAMESPACE",
+    "channel_name": "示例频道",
+    "admin_user": "QQ_ADMIN_USER_ID"
+}

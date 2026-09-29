@@ -1,0 +1,11 @@
+{
+  "QQ_GROUP_OPENID": {
+    "group_id": "QA_NAMESPACE",
+    "group_name": "示例群",
+    "description": "将键替换为 QQ 群 openid",
+    "admin_users": [
+      "QQ_ADMIN_USER_ID"
+    ],
+    "enabled": true
+  }
+} 

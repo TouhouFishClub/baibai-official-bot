@@ -1,0 +1,69 @@
+const fs = require('fs-extra')
+const path = require('path')
+const xml2js = require('xml2js')
+module.exports = function(callback) {
+  let optionsetInfo = fs.readFileSync(path.join(__dirname, '..', 'data', 'IT', 'optionset.china.txt'), 'utf-8')
+  let optionsetXml = fs.readFileSync(path.join(__dirname, '..', 'data', 'IT', 'optionset.xml'), 'utf-16le')
+	let optionsetCustom = fs.readJsonSync(path.join(__dirname, 'custom.json'), 'utf-8')
+  // console.log(optionsetXml)
+  optionsetXml = optionsetXml.substring(optionsetXml.indexOf('<'))
+  let parser = new xml2js.Parser()
+  let transform = {}
+  optionsetInfo.split('\n').forEach(val => {
+    let sp = val.split('\t')
+    transform[`_LT[xml.optionset.${sp[0]}]`] = sp[1] ? sp[1].trim() : ''
+  })
+  let effectiveOptionsetHashMap = {}
+  parser.parseString(optionsetXml, (err, result) => {
+    let options = result.OptionSet.OptionSetList[0].OptionSet.map(val => val.$)
+	  if(optionsetCustom.length) {
+	    let custom = optionsetCustom.map(x => Object.assign({custom: true}, x))
+		  options = options.concat(custom)
+	  }
+    options.forEach(val => {
+      // 临时修改，布里列赫遗物usage=11是接头 usage=12是接尾
+      const usageSupported =
+        val.Usage === '0' || val.Usage === '1' || val.Usage === '11' || val.Usage === '12'
+      if(
+      	(
+      		transform[val.LocalName] &&
+		      transform[val.LocalName2] &&
+		      transform[val.OptionDesc] &&
+		      usageSupported
+	      )
+	      ||
+	      val.custom
+      ){
+        let obj = {}
+        obj.ID = val.custom ? `cu${val.ID}` : val.ID
+        obj.Name = val.Name
+        obj.LocalName = val.custom ? val.LocalName : transform[val.LocalName]
+        obj.LocalName2 = val.custom ? val.LocalName : transform[val.LocalName2]
+        obj.OptionDesc = val.custom ? val.OptionDesc : transform[val.OptionDesc]
+        obj.LevelQuery = 16 - val.Level
+        obj.Level = 16 - val.Level < 10 ? 16 - val.Level : ['A', 'B', 'C', 'D', 'E', 'F', '练习'][6 - val.Level]
+        if (val.custom) {
+          obj.Usage = val.Usage === '0' ? '接头' : '接尾'
+          obj.UsageQuery = val.Usage
+        } else {
+          const isPrefix = val.Usage === '0' || val.Usage === '11'
+          obj.Usage = isPrefix ? '接头' : '接尾'
+          obj.UsageQuery = isPrefix ? '0' : '1'
+        }
+        let buffArr = [], debuffArr = []
+        obj.OptionDesc.split('\\n').forEach(val => {
+          if(/^\[.*\]$/.test(val)){
+            debuffArr.push(val.substring(1, val.length - 1))
+          } else {
+            buffArr.push(val)
+          }
+        })
+        obj.Buff = buffArr
+        obj.BuffStr = buffArr.concat(debuffArr).join(',')
+        obj.Debuff = debuffArr
+				effectiveOptionsetHashMap[obj.ID] = obj
+      }
+    })
+    callback(Object.values(effectiveOptionsetHashMap))
+  })
+}

@@ -1,0 +1,65 @@
+# 依赖目录
+node_modules/
+
+# 日志文件
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 运行时数据
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# 目录
+.env
+.env.test
+.env.production
+.env.local
+.env.*.local
+
+# IDE配置
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 调试文件
+coverage/
+.nyc_output/
+
+# 临时文件
+tmp/
+temp/
+
+# 环境变量文件
+.env
+config.env
+
+# 临时文件目录
+public/temp_images/
+public/generated/
+
+# 群组配置文件
+config/groups.json
+config/channel.json
+
+# 推送系统配置文件和数据文件（忽略实际配置文件，保留示例文件）
+data/push_configs.json
+data/pushed_records.json
+data/qa/
+features/mabinogi/recipeRebuild/cache/*.json
+*.local.json
+*.secret.json
+.secret.json
+
+# 不忽略示例文件和文档
+!data/*.example.json
+!data/qa.example.json
