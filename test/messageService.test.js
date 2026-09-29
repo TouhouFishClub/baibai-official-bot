@@ -5,8 +5,8 @@ const {
   validateTypedMessage
 } = require('../services/messageService');
 
-test('QQ OpenAPI 默认使用现行官方域名', () => {
-  assert.equal(QQ_API_ROOT, 'https://api.bot.qq.com');
+test('QQ OpenAPI 默认使用已验证可通的域名', () => {
+  assert.equal(QQ_API_ROOT, 'https://api.sgroup.qq.com');
 });
 
 test('群聊和单聊消息体按 msg_type 校验', () => {

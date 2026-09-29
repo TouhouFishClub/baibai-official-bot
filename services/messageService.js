@@ -6,10 +6,10 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
 
-// QQ 官方 OpenAPI；允许通过环境变量覆盖以便联调。
-const QQ_API_ROOT = String(process.env.QQ_API_ROOT || 'https://api.bot.qq.com').replace(/\/+$/, '');
+// 默认沿用已验证可通的旧域名；新文档域名可通过环境变量覆盖。
+const QQ_API_ROOT = String(process.env.QQ_API_ROOT || 'https://api.sgroup.qq.com').replace(/\/+$/, '');
 const QQ_TOKEN_URL = String(
-  process.env.QQ_TOKEN_URL || `${QQ_API_ROOT}/app/getAppAccessToken`
+  process.env.QQ_TOKEN_URL || 'https://bots.qq.com/app/getAppAccessToken'
 );
 const configuredTimeout = Number(process.env.QQ_API_TIMEOUT_MS);
 const QQ_API_TIMEOUT_MS = Number.isFinite(configuredTimeout) && configuredTimeout > 0
@@ -66,7 +66,7 @@ async function getAccessToken() {
       throw new Error('未配置QQ_BOT_APP_ID或QQ_BOT_SECRET环境变量');
     }
     
-    // 获取访问令牌 - 使用正确的API地址
+    logger.debug('开始获取访问令牌', { url: QQ_TOKEN_URL });
     const tokenResponse = await axios.post(
       QQ_TOKEN_URL,
       {
@@ -118,23 +118,24 @@ async function sendGroupMessage(groupOpenid, message, eventId = null, msgId = nu
     }
     
     validateTypedMessage(message);
-    
-    // 获取访问令牌
+
     const accessToken = await getAccessToken();
-    
-    // 构建请求数据
     const requestData = { ...message };
-    
-    // 添加可选字段
     if (eventId) requestData.event_id = eventId;
     if (msgId) {
       requestData.msg_id = msgId;
       requestData.msg_seq = msgSeq;
     }
-    
-    // 发送消息请求
+
+    const requestUrl = `${QQ_API_ROOT}/v2/groups/${groupOpenid}/messages`;
+    logger.debug('开始发送群聊消息', {
+      url: requestUrl,
+      msgType: requestData.msg_type,
+      hasMsgId: Boolean(requestData.msg_id),
+      msgSeq: requestData.msg_seq
+    });
     const response = await axios.post(
-      `${QQ_API_ROOT}/v2/groups/${groupOpenid}/messages`,
+      requestUrl,
       requestData,
       {
         headers: {
