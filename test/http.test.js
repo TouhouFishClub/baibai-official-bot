@@ -30,6 +30,20 @@ test('探针路径不会暴露环境文件', async () => {
   await request(app).get('/.env').expect(404);
 });
 
+test('直接访问 Webhook 不会导致服务退出', async () => {
+  const getResponse = await request(app).get('/qq/webhook').expect(405);
+  assert.match(getResponse.body.error, /仅支持 POST/);
+
+  const invalidJsonResponse = await request(app)
+    .post('/qq/webhook')
+    .set('Content-Type', 'application/json')
+    .send('{"incomplete":')
+    .expect(400);
+  assert.match(invalidJsonResponse.body.error, /有效的 JSON/);
+
+  await request(app).get('/').expect(200);
+});
+
 test('管理登录后可访问受保护状态接口', async () => {
   const login = await request(app)
     .post('/admin/login')

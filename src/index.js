@@ -38,19 +38,13 @@ if (config.security.enableCors) {
   app.use(cors(corsOptions));
 }
 
-// 为webhook路由保存原始请求体
-app.use('/qq/webhook', (req, res, next) => {
-  let rawBody = '';
-  req.setEncoding('utf8');
-  req.on('data', (chunk) => {
-    rawBody += chunk;
-  });
-  req.on('end', () => {
-    req.rawBody = rawBody;
-    req.body = JSON.parse(rawBody);
-    next();
-  });
-});
+// 为 Webhook 保存签名验证所需的原始请求体。
+// 由 body-parser 负责捕获空请求体和无效 JSON，避免解析异常导致进程退出。
+app.use('/qq/webhook', bodyParser.json({
+  verify: (req, res, buffer) => {
+    req.rawBody = buffer.toString('utf8');
+  }
+}));
 
 // 拦截扫描探针（在解析 body / 写日志之前直接 404）
 app.use(probeGuard);
@@ -79,6 +73,9 @@ app.use((req, res, next) => {
 
 // QQ Webhook 路由 - 使用签名验证中间件
 app.post('/qq/webhook', verifySignature, webhookController.handleWebhook);
+app.get('/qq/webhook', (req, res) => {
+  res.status(405).json({ error: 'Webhook 仅支持 POST 请求' });
+});
 
 // 论坛发帖路由
 app.use('/put', forumRoutes);
@@ -112,9 +109,10 @@ app.use((req, res) => {
 
 // 错误处理中间件
 app.use((err, req, res, next) => {
-  logger.error('服务器错误', err);
-  res.status(500).json({ 
-    error: '服务器内部错误',
+  const status = err.status === 400 ? 400 : 500;
+  logger.error(status === 400 ? '请求体解析失败' : '服务器错误', err);
+  res.status(status).json({
+    error: status === 400 ? '请求体不是有效的 JSON' : '服务器内部错误',
     message: config.server.environment === 'development' ? err.message : '请联系管理员'
   });
 });
