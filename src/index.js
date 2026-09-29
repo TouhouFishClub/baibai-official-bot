@@ -112,7 +112,7 @@ app.use((req, res) => {
 
 // 错误处理中间件
 app.use((err, req, res, next) => {
-  console.error('服务器错误:', err);
+  logger.error('服务器错误', err);
   res.status(500).json({ 
     error: '服务器内部错误',
     message: config.server.environment === 'development' ? err.message : '请联系管理员'

@@ -4,6 +4,7 @@
  */
 
 const { generateSignature } = require('../utils/signature');
+const logger = require('../utils/logger');
 
 /**
  * 处理回调地址验证
@@ -35,7 +36,7 @@ async function handleValidation(payload, res) {
     });
 
   } catch (error) {
-    console.error('验证处理错误:', error);
+    logger.error('验证处理错误', error);
     return res.status(500).json({
       error: '验证处理失败',
       message: error.message

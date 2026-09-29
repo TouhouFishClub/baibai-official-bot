@@ -13,6 +13,8 @@ const LOG_LEVELS = {
 
 // 当前日志级别（从环境变量读取，默认为INFO）
 const currentLogLevel = LOG_LEVELS[process.env.LOG_LEVEL?.toUpperCase()] ?? LOG_LEVELS.INFO;
+const MAX_DETAIL_LENGTH = 2000;
+const SENSITIVE_KEY_PATTERN = /authorization|cookie|token|secret|password|signature/i;
 
 /**
  * 格式化时间戳
@@ -27,6 +29,89 @@ function getTimestamp() {
     second: '2-digit',
     hour12: false
   });
+}
+
+function singleLine(value, maxLength = MAX_DETAIL_LENGTH) {
+  const normalized = String(value ?? '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\b(Bearer|QQBot)\s+\S+/gi, '$1 [REDACTED]')
+    .replace(
+      /([?&](?:access_token|token|secret|password|signature)=)[^&\s]+/gi,
+      '$1[REDACTED]'
+    )
+    .trim();
+  return normalized.length > maxLength
+    ? `${normalized.slice(0, maxLength)}…`
+    : normalized;
+}
+
+function sanitizeValue(value, depth = 0, seen = new WeakSet()) {
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'string') return singleLine(value, 500);
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (typeof value !== 'object') return singleLine(value, 500);
+  if (seen.has(value)) return '[Circular]';
+  if (depth >= 2) return '[Object]';
+
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.slice(0, 10).map((item) => sanitizeValue(item, depth + 1, seen));
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .slice(0, 20)
+      .map(([key, item]) => [
+        key,
+        SENSITIVE_KEY_PATTERN.test(key)
+          ? '[REDACTED]'
+          : sanitizeValue(item, depth + 1, seen)
+      ])
+  );
+}
+
+function sanitizeUrl(value) {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    url.search = '';
+    return url.toString();
+  } catch (_) {
+    return singleLine(String(value).split('?')[0], 500);
+  }
+}
+
+function getErrorDetails(data) {
+  if (data === null || data === undefined) return null;
+  if (typeof data === 'string') return { message: singleLine(data) };
+
+  if (data instanceof Error || data?.message || data?.response || data?.config) {
+    const details = {
+      name: singleLine(data.name || 'Error'),
+      message: singleLine(data.message || '未知错误'),
+      code: data.code ? singleLine(data.code) : undefined,
+      status: data.response?.status ?? data.status,
+      method: data.config?.method ? singleLine(data.config.method).toUpperCase() : undefined,
+      url: sanitizeUrl(data.config?.url),
+      response: data.response?.data === undefined
+        ? undefined
+        : sanitizeValue(data.response.data)
+    };
+    return Object.fromEntries(
+      Object.entries(details).filter(([, value]) => value !== undefined)
+    );
+  }
+
+  return sanitizeValue(data);
+}
+
+function formatDetails(data) {
+  try {
+    return singleLine(JSON.stringify(getErrorDetails(data)));
+  } catch (_) {
+    return '{"message":"错误详情无法序列化"}';
+  }
 }
 
 /**
@@ -55,7 +140,16 @@ function log(level, message, data = null) {
  * 错误日志
  */
 function error(message, data = null) {
-  log('ERROR', message, data);
+  if (LOG_LEVELS.ERROR > currentLogLevel) return;
+
+  const timestamp = getTimestamp();
+  const safeMessage = singleLine(message || '未命名错误');
+  console.log(`[${timestamp}] ERROR: ${safeMessage}（详情见错误日志）`);
+
+  const details = formatDetails(data);
+  console.error(
+    `[${timestamp}] ERROR_DETAIL: ${safeMessage}${details && details !== 'null' ? ` ${details}` : ''}`
+  );
 }
 
 /**
@@ -151,6 +245,7 @@ module.exports = {
   command,
   message,
   reply,
+  getErrorDetails,
   LOG_LEVELS,
   currentLogLevel
 };

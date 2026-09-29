@@ -61,6 +61,34 @@ npm test
 
 测试使用临时目录和 mock，不访问真实 QQ、旧 bot、MongoDB 或生产源站。
 
+## PM2 日志
+
+使用仓库内配置启动后，普通日志和错误详情会分别写入 `logs/baibai-official-bot-out.log` 与 `logs/baibai-official-bot-error.log`：
+
+```bash
+pm2 start ecosystem.config.js
+pm2 save
+```
+
+`pm2 logs baibai-official-bot` 会同时显示两个日志流。只查看普通日志或错误详情时使用：
+
+```bash
+pm2 logs baibai-official-bot --out --lines 200
+pm2 logs baibai-official-bot --err --lines 200
+```
+
+普通日志只记录错误摘要；错误日志记录经过脱敏、截断的单行详情，不会展开 Axios 的 request、headers 等对象。已有的旧日志可用 `pm2 flush` 清空。生产环境建议安装 `pm2-logrotate` 控制日志大小和保留时间。
+
+仓库根目录提供了常用管理脚本：
+
+```bash
+bash run.sh          # 首次启动；已存在时按最新配置重启
+bash restart.sh      # 重启
+bash stop.sh         # 停止
+bash log.sh 200      # 查看最近 200 行普通日志
+bash err.sh 200      # 查看最近 200 行错误日志
+```
+
 ## 安全
 
 - 生产环境缺少 QQ/JWT/管理员必填配置时拒绝启动。

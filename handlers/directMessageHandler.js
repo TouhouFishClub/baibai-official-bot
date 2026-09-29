@@ -20,7 +20,7 @@ function getChannelConfig() {
     const configPath = path.join(__dirname, '../config/channel.json');
     return JSON.parse(fs.readFileSync(configPath, 'utf8'));
   } catch (error) {
-    console.error('读取配置文件错误:', error);
+    logger.error('读取配置文件错误', error);
     return {};
   }
 }
@@ -65,7 +65,7 @@ async function handleC2CMessage(eventData) {
     }
     
   } catch (error) {
-    console.error('处理QQ私信消息错误:', error);
+    logger.error('处理QQ私信消息错误', error);
   }
 }
 
@@ -107,7 +107,7 @@ async function handleDirectMessage(eventData) {
     }
     
   } catch (error) {
-    console.error('处理频道私信消息错误:', error);
+    logger.error('处理频道私信消息错误', error);
   }
 }
 
@@ -182,7 +182,7 @@ async function sendReplyToC2C(responseData, userOpenid, messageId) {
       const processSuccess = await processBase64Image(responseData.base64, imagePath);
       
       if (!processSuccess) {
-        console.error('QQ私信图片处理失败，跳过发送');
+        logger.error('QQ私信图片处理失败，跳过发送');
         return;
       }
       
@@ -242,7 +242,7 @@ async function sendReplyToC2C(responseData, userOpenid, messageId) {
       // 如果过滤后消息为空，则不发送
     }
   } catch (error) {
-    console.error('发送QQ私信回复失败:', error);
+    logger.error('发送QQ私信回复失败', error);
   }
 }
 
@@ -271,7 +271,7 @@ async function sendReplyToDirectMessage(responseData, guildId, messageId) {
       const processSuccess = await processBase64Image(responseData.base64, imagePath);
       
       if (!processSuccess) {
-        console.error('频道私信图片处理失败，跳过发送');
+        logger.error('频道私信图片处理失败，跳过发送');
         return;
       }
       
@@ -303,7 +303,7 @@ async function sendReplyToDirectMessage(responseData, guildId, messageId) {
         try {
           await sendImageToDirectMessage(guildId, imageUrl, '', null, messageId);
         } catch (imgError) {
-          console.error('发送频道私信图片失败:', imgError.message);
+          logger.error('发送频道私信图片失败', imgError);
         }
       } else {
         // 只发送图片
@@ -319,7 +319,7 @@ async function sendReplyToDirectMessage(responseData, guildId, messageId) {
       // 如果过滤后消息为空，则不发送
     }
   } catch (error) {
-    console.error('发送频道私信回复失败:', error);
+    logger.error('发送频道私信回复失败', error);
   }
 }
 
@@ -362,10 +362,7 @@ async function uploadFileForC2C(userOpenid, url, fileType) {
     return response.data.file_info;
     
   } catch (error) {
-    console.error('上传QQ私信文件失败:', error.message);
-    if (error.response) {
-      console.error('状态码:', error.response.status);
-    }
+    logger.error('上传QQ私信文件失败', error);
     throw error;
   }
 }
@@ -392,7 +389,7 @@ async function sendMediaWithTextToC2C(userOpenid, fileInfo, text, messageId) {
     
     console.log('QQ私信图文混合消息发送成功');
   } catch (error) {
-    console.error('发送QQ私信图文混合消息失败:', error.message);
+    logger.error('发送QQ私信图文混合消息失败', error);
     throw error;
   }
 }

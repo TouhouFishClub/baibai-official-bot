@@ -2,6 +2,7 @@ const fs = require('fs')
 const path = require('path')
 const { IMAGE_DATA } = require(path.join(__dirname, '..', '..', '..', 'baibaiConfigs.js'))
 const { getBrowserLaunchOptions } = require('../../../utils/browserOptions')
+const logger = require('../../../utils/logger')
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -354,7 +355,7 @@ const renderRecipeImage = async (product, recipes, allItems, recipesByProduct, s
 
     callback(mixMsg)
   } catch (err) {
-    console.error('[renderRecipe] 渲染错误:', err)
+    logger.error('[renderRecipe] 渲染错误', err)
     callback('配方图片渲染失败，请稍后再试')
   } finally {
     if (page) {

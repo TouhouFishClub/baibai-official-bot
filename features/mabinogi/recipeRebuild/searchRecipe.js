@@ -1,4 +1,5 @@
 const { loadAllRecipes, getAllItems, getItemSources } = require('./dataLoader')
+const logger = require('../../../utils/logger')
 
 // 延迟加载 renderRecipe（避免在 puppeteer 不可用时崩溃）
 let _renderRecipeImage = null
@@ -169,7 +170,7 @@ const searchMabiRecipe = async (content, callback, showDesc = false) => {
       }
     }
   } catch (err) {
-    console.error('[searchRecipe] 错误:', err)
+    logger.error('[searchRecipe] 错误', err)
     callback('配方查询出错，请稍后再试')
   }
 }
