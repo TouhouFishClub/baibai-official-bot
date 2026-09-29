@@ -6,7 +6,14 @@
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const { sendTextToC2C, sendTextToDirectMessage } = require('../services/messageService');
+const {
+  sendTextToC2C,
+  sendTextToDirectMessage,
+  sendC2CMessage,
+  getAccessToken,
+  QQ_API_ROOT,
+  QQ_API_TIMEOUT_MS
+} = require('../services/messageService');
 const { processBase64Image, getImageInfo } = require('../utils/imageProcessor');
 const { executeInput } = require('../services/localCommandService');
 const logger = require('../utils/logger');
@@ -204,29 +211,22 @@ async function sendReplyToC2C(responseData, userOpenid, messageId) {
       // 调用QQ API上传图片，获取file_info
       const fileInfo = await uploadFileForC2C(userOpenid, imageUrl, 1); // 1表示图片类型
       
-      // 如果有文本消息，使用图文混合消息
+      // C2C msg_type=7 时仅 media 字段生效，文本作为下一条回复发送。
       if (responseData.message) {
-        // 过滤CQ at代码后发送图文混合消息
         const filteredMessage = filterCQAtCodes(responseData.message);
+        await sendC2CMessage(userOpenid, {
+          msg_type: 7,
+          media: {
+            file_info: fileInfo
+          }
+        }, null, messageId, 1);
         if (filteredMessage.trim()) {
-          await sendMediaWithTextToC2C(userOpenid, fileInfo, filteredMessage, messageId);
-        } else {
-          // 如果文本被过滤完了，只发送图片
-          const { sendC2CMessage } = require('../services/messageService');
-          await sendC2CMessage(userOpenid, {
-            content: ' ', // 富媒体消息content需要有值
-            msg_type: 7,   // 富媒体消息类型
-            media: {
-              file_info: fileInfo
-            }
-          }, null, messageId);
+          await sendTextToC2C(userOpenid, filteredMessage, null, messageId, 2);
         }
       } else {
         // 只有图片，没有文本
-        const { sendC2CMessage } = require('../services/messageService');
         await sendC2CMessage(userOpenid, {
-          content: ' ', // 富媒体消息content需要有值
-          msg_type: 7,   // 富媒体消息类型
+          msg_type: 7,
           media: {
             file_info: fileInfo
           }
@@ -292,19 +292,8 @@ async function sendReplyToDirectMessage(responseData, guildId, messageId) {
       
       // 频道私信使用类似频道的方式发送图片
       if (responseData.message) {
-        // 过滤CQ at代码后发送文本和图片
         const filteredMessage = filterCQAtCodes(responseData.message);
-        if (filteredMessage.trim()) {
-          console.log('频道私信：先发送文本消息，然后发送图片');
-          // 先发送过滤后的文本
-          await sendTextToDirectMessage(guildId, filteredMessage, null, messageId);
-        }
-        // 然后尝试发送图片
-        try {
-          await sendImageToDirectMessage(guildId, imageUrl, '', null, messageId);
-        } catch (imgError) {
-          logger.error('发送频道私信图片失败', imgError);
-        }
+        await sendImageToDirectMessage(guildId, imageUrl, filteredMessage, null, messageId);
       } else {
         // 只发送图片
         await sendImageToDirectMessage(guildId, imageUrl, '', null, messageId);
@@ -332,10 +321,7 @@ async function sendReplyToDirectMessage(responseData, guildId, messageId) {
  */
 async function uploadFileForC2C(userOpenid, url, fileType) {
   try {
-    const QQ_API_ROOT = 'https://api.sgroup.qq.com';
-    
     // 获取访问令牌
-    const { getAccessToken } = require('../services/messageService');
     const accessToken = await getAccessToken();
     
     // 构建上传文件请求 - QQ私信使用用户API
@@ -350,7 +336,8 @@ async function uploadFileForC2C(userOpenid, url, fileType) {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `QQBot ${accessToken}`
-        }
+        },
+        timeout: QQ_API_TIMEOUT_MS
       }
     );
     
@@ -363,33 +350,6 @@ async function uploadFileForC2C(userOpenid, url, fileType) {
     
   } catch (error) {
     logger.error('上传QQ私信文件失败', error);
-    throw error;
-  }
-}
-
-/**
- * 发送图文混合消息到QQ私信
- * @param {string} userOpenid - 用户的openid 
- * @param {string} fileInfo - 文件信息
- * @param {string} text - 文本内容
- * @param {string} messageId - 回复的消息ID
- */
-async function sendMediaWithTextToC2C(userOpenid, fileInfo, text, messageId) {
-  try {
-    const { sendC2CMessage } = require('../services/messageService');
-    
-    // 构建图文混合消息
-    await sendC2CMessage(userOpenid, {
-      content: text, // 文本内容放在content中
-      msg_type: 7,   // 富媒体消息类型
-      media: {
-        file_info: fileInfo
-      }
-    }, null, messageId);
-    
-    console.log('QQ私信图文混合消息发送成功');
-  } catch (error) {
-    logger.error('发送QQ私信图文混合消息失败', error);
     throw error;
   }
 }

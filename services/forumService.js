@@ -4,56 +4,11 @@
  */
 
 const axios = require('axios');
-
-// QQ机器人API基础URL
-// 重要发现：频道API和群聊API使用不同的域名！
-// 群聊API: https://api.sgroup.qq.com  (用于群聊消息)
-// 频道API: https://api.sgroup.qq.com  (用于频道相关功能) 
-// 但很可能频道论坛API需要使用QQ频道专用的API域名
-// 尝试使用频道专用的API域名
-const QQ_CHANNEL_API_ROOT = 'https://api.sgroup.qq.com';
-
-/**
- * 获取访问令牌
- * @returns {Promise<string>} 访问令牌
- */
-async function getAccessToken() {
-  try {
-    const appId = process.env.QQ_BOT_APP_ID;
-    const appSecret = process.env.QQ_BOT_SECRET;
-    
-    if (!appId || !appSecret) {
-      throw new Error('未配置QQ_BOT_APP_ID或QQ_BOT_SECRET环境变量');
-    }
-    
-    // 获取访问令牌
-    const tokenResponse = await axios.post(
-      'https://bots.qq.com/app/getAppAccessToken',
-      {
-        appId: appId,
-        clientSecret: appSecret
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    
-    if (!tokenResponse.data || !tokenResponse.data.access_token) {
-      throw new Error('获取访问令牌失败: ' + JSON.stringify(tokenResponse.data));
-    }
-    
-    console.log('成功获取访问令牌，有效期:', tokenResponse.data.expires_in, '秒');
-    return tokenResponse.data.access_token;
-  } catch (error) {
-    console.error('获取访问令牌错误:', error.message);
-    if (error.response) {
-      console.error('QQ token API 状态码:', error.response.status);
-    }
-    throw error;
-  }
-}
+const {
+  getAccessToken,
+  QQ_API_ROOT: QQ_CHANNEL_API_ROOT,
+  QQ_API_TIMEOUT_MS
+} = require('./messageService');
 
 /**
  * 发表帖子到频道论坛
@@ -94,7 +49,8 @@ async function publishThread(channelId, title, content, format = 2) {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `QQBot ${accessToken}`
-        }
+        },
+        timeout: QQ_API_TIMEOUT_MS
       }
     );
     
@@ -161,7 +117,8 @@ async function getGuildsList() {
       {
         headers: {
           'Authorization': `QQBot ${accessToken}`
-        }
+        },
+        timeout: QQ_API_TIMEOUT_MS
       }
     );
     
@@ -193,7 +150,8 @@ async function getChannelsList(guildId) {
       {
         headers: {
           'Authorization': `QQBot ${accessToken}`
-        }
+        },
+        timeout: QQ_API_TIMEOUT_MS
       }
     );
     
@@ -225,7 +183,8 @@ async function getChannelInfo(channelId) {
       {
         headers: {
           'Authorization': `QQBot ${accessToken}`
-        }
+        },
+        timeout: QQ_API_TIMEOUT_MS
       }
     );
     

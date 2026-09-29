@@ -3,7 +3,6 @@
  * 处理频道中@机器人的消息 (AT_MESSAGE_CREATE事件)
  */
 
-const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { sendTextToChannel, sendImageToChannel } = require('../services/messageService');
@@ -93,18 +92,10 @@ async function sendReplyToChannel(responseData, channelId, messageId) {
       const encodedFileName = encodeURIComponent(fileName);
       const imageUrl = `${serverHost}/temp_images/${encodedFileName}`;
       
-      // 暂时先发送文本消息，调试认证问题
       if (responseData.message) {
-        // 先发送文本消息，然后发送图片
-        // 转换CQ码格式
         const convertedMessage = convertCQCodeToQQFormat(responseData.message);
-        await sendTextToChannel(channelId, convertedMessage, null, messageId);
-        // 然后尝试发送图片
-        try {
-          await sendImageToChannel(channelId, imageUrl, '', null, messageId);
-        } catch (imgError) {
-          logger.error('发送图片失败，但文本已发送', imgError.message);
-        }
+        // 频道接口可在同一个消息体中同时携带 content 和 image。
+        await sendImageToChannel(channelId, imageUrl, convertedMessage, null, messageId);
       } else {
         // 只发送图片
         await sendImageToChannel(channelId, imageUrl, '', null, messageId);
@@ -122,65 +113,6 @@ async function sendReplyToChannel(responseData, channelId, messageId) {
 }
 
 // 注意：频道API不需要先上传文件获取file_info，直接使用图片URL即可
-
-/**
- * 获取访问令牌
- * @returns {Promise<string>} 访问令牌
- */
-async function getAccessToken() {
-  const axios = require('axios');
-  
-  try {
-    const appId = process.env.QQ_BOT_APP_ID;
-    const appSecret = process.env.QQ_BOT_SECRET;
-    
-    if (!appId || !appSecret) {
-      throw new Error('未配置QQ_BOT_APP_ID或QQ_BOT_SECRET环境变量');
-    }
-    
-    // 获取访问令牌 - 使用正确的API地址
-    const tokenResponse = await axios.post(
-      'https://bots.qq.com/app/getAppAccessToken',
-      {
-        appId: appId,
-        clientSecret: appSecret
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    
-    if (!tokenResponse.data || !tokenResponse.data.access_token) {
-      throw new Error('获取访问令牌失败: ' + JSON.stringify(tokenResponse.data));
-    }
-    
-    logger.debug(`获取访问令牌成功，有效期: ${tokenResponse.data.expires_in}秒`);
-    return tokenResponse.data.access_token;
-  } catch (error) {
-    logger.error('获取访问令牌失败', error.message);
-    if (error.response) {
-      logger.debug('QQ token API 请求失败', { status: error.response.status });
-    }
-    throw error;
-  }
-}
-
-/**
- * 发送图文混合消息到频道（已废弃，请使用sendImageToChannel）
- * @param {string} channelId - 频道ID  
- * @param {string} imageUrl - 图片URL（不再是fileInfo）
- * @param {string} text - 文本内容
- * @param {string} messageId - 回复的消息ID
- */
-async function sendMediaWithTextToChannel(channelId, imageUrl, text, messageId) {
-  logger.warn('sendMediaWithTextToChannel已废弃，建议使用sendImageToChannel');
-  
-  // 直接使用新的图片发送接口
-  const { sendImageToChannel } = require('../services/messageService');
-  return await sendImageToChannel(channelId, imageUrl, text, null, messageId);
-}
 
 /**
  * 将CQ码格式转换为QQ机器人API格式

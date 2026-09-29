@@ -47,7 +47,7 @@ async function handleDispatchEvent(payload, res) {
     const eventData = payload.d;
     
     logger.info(`收到事件: ${eventType}`, { 
-      groupId: eventData.group_id, 
+      groupId: eventData.group_openid || eventData.group_id,
       channelId: eventData.channel_id, 
       userId: eventData.author?.id 
     });

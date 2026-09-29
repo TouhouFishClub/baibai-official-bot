@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { dispatchEvent } = require('../events/eventDispatcher');
+const { resolveGroupOpenid } = require('../handlers/groupMessageHandler');
 const { EVENT_TYPE } = require('../utils/constants');
 
 function createHandlers(calls) {
@@ -35,4 +36,13 @@ test('频道和群全量消息沿用各自 handler', async () => {
   await dispatchEvent(EVENT_TYPE.GROUP_MESSAGE_CREATE, {}, handlers);
 
   assert.deepEqual(calls.map(([name]) => name), ['channel', 'group']);
+});
+
+test('群回复标识兼容 group_openid 和 group_id', () => {
+  assert.equal(
+    resolveGroupOpenid({ group_openid: 'openid', group_id: 'legacy-id' }),
+    'openid'
+  );
+  assert.equal(resolveGroupOpenid({ group_id: 'legacy-id' }), 'legacy-id');
+  assert.equal(resolveGroupOpenid({}), null);
 });

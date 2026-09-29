@@ -4,18 +4,61 @@
  */
 
 const axios = require('axios');
-const qs = require('querystring');
 const logger = require('../utils/logger');
 
-// QQ机器人API基础URL
-const QQ_API_ROOT = 'https://api.sgroup.qq.com';
+// QQ 官方 OpenAPI；允许通过环境变量覆盖以便联调。
+const QQ_API_ROOT = String(process.env.QQ_API_ROOT || 'https://api.bot.qq.com').replace(/\/+$/, '');
+const QQ_TOKEN_URL = String(
+  process.env.QQ_TOKEN_URL || `${QQ_API_ROOT}/app/getAppAccessToken`
+);
+const configuredTimeout = Number(process.env.QQ_API_TIMEOUT_MS);
+const QQ_API_TIMEOUT_MS = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+  ? configuredTimeout
+  : 15000;
+let cachedAccessToken = null;
+let accessTokenExpiresAt = 0;
+let accessTokenRequest = null;
+
+function logRequestError(message, error) {
+  if (!error?.alreadyLogged) {
+    logger.error(message, error);
+  }
+  if (error && typeof error === 'object') {
+    error.alreadyLogged = true;
+  }
+}
+
+function validateTypedMessage(message) {
+  if (!message || typeof message !== 'object') {
+    throw new Error('消息内容不能为空');
+  }
+  if (message.msg_type === undefined) {
+    message.msg_type = 0;
+  }
+  if (message.msg_type === 0 && !String(message.content || '').trim()) {
+    throw new Error('文本消息内容不能为空');
+  }
+  if (message.msg_type === 2 && !message.markdown) {
+    throw new Error('Markdown消息必须包含markdown字段');
+  }
+  if (message.msg_type === 7 && !message.media?.file_info) {
+    throw new Error('富媒体消息必须包含media.file_info字段');
+  }
+}
 
 /**
  * 获取访问令牌
  * @returns {Promise<string>} 访问令牌
  */
 async function getAccessToken() {
-  try {
+  if (cachedAccessToken && Date.now() < accessTokenExpiresAt) {
+    return cachedAccessToken;
+  }
+  if (accessTokenRequest) {
+    return accessTokenRequest;
+  }
+
+  accessTokenRequest = (async () => {
     const appId = process.env.QQ_BOT_APP_ID;
     const appSecret = process.env.QQ_BOT_SECRET;
     
@@ -25,7 +68,7 @@ async function getAccessToken() {
     
     // 获取访问令牌 - 使用正确的API地址
     const tokenResponse = await axios.post(
-      'https://bots.qq.com/app/getAppAccessToken',
+      QQ_TOKEN_URL,
       {
         appId: appId,
         clientSecret: appSecret
@@ -33,7 +76,8 @@ async function getAccessToken() {
       {
         headers: {
           'Content-Type': 'application/json'
-        }
+        },
+        timeout: QQ_API_TIMEOUT_MS
       }
     );
     
@@ -41,14 +85,20 @@ async function getAccessToken() {
       throw new Error('获取访问令牌失败: ' + JSON.stringify(tokenResponse.data));
     }
     
-    logger.debug(`获取访问令牌成功，有效期: ${tokenResponse.data.expires_in}秒`);
-    return tokenResponse.data.access_token;
+    const expiresIn = Number(tokenResponse.data.expires_in) || 0;
+    cachedAccessToken = tokenResponse.data.access_token;
+    accessTokenExpiresAt = Date.now() + Math.max(1, expiresIn - 60) * 1000;
+    logger.debug(`获取访问令牌成功，有效期: ${expiresIn}秒`);
+    return cachedAccessToken;
+  })();
+
+  try {
+    return await accessTokenRequest;
   } catch (error) {
-    logger.error('获取访问令牌失败', error.message);
-    if (error.response) {
-      logger.debug('QQ token API 请求失败', { status: error.response.status });
-    }
+    logRequestError('获取访问令牌失败', error);
     throw error;
+  } finally {
+    accessTokenRequest = null;
   }
 }
 
@@ -67,19 +117,7 @@ async function sendGroupMessage(groupOpenid, message, eventId = null, msgId = nu
       throw new Error('缺少群聊openid参数');
     }
     
-    if (!message || !message.content) {
-      throw new Error('消息内容不能为空');
-    }
-    
-    // 确保msg_type有效
-    if (message.msg_type === undefined) {
-      message.msg_type = 0; // 默认为文本消息
-    }
-    
-    // 富媒体消息类型需要特殊处理
-    if (message.msg_type === 7 && message.content.trim() === '') {
-      message.content = ' '; // 富媒体消息content需要有值
-    }
+    validateTypedMessage(message);
     
     // 获取访问令牌
     const accessToken = await getAccessToken();
@@ -102,7 +140,8 @@ async function sendGroupMessage(groupOpenid, message, eventId = null, msgId = nu
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `QQBot ${accessToken}`
-        }
+        },
+        timeout: QQ_API_TIMEOUT_MS
       }
     );
     
@@ -110,10 +149,7 @@ async function sendGroupMessage(groupOpenid, message, eventId = null, msgId = nu
     return response.data;
     
   } catch (error) {
-    logger.error('发送群聊消息失败', error.message);
-    if (error.response) {
-      logger.debug('QQ API 请求失败', { status: error.response.status });
-    }
+    logRequestError('发送群聊消息失败', error);
     throw error;
   }
 }
@@ -126,7 +162,7 @@ async function sendGroupMessage(groupOpenid, message, eventId = null, msgId = nu
  * @param {string} [msgId] - 前置消息ID (可选)
  * @returns {Promise<object>} 发送结果
  */
-async function sendTextToGroup(groupOpenid, content, eventId = null, msgId = null) {
+async function sendTextToGroup(groupOpenid, content, eventId = null, msgId = null, msgSeq = 1) {
   return sendGroupMessage(
     groupOpenid,
     {
@@ -134,29 +170,35 @@ async function sendTextToGroup(groupOpenid, content, eventId = null, msgId = nul
       msg_type: 0 // 文本消息
     },
     eventId,
-    msgId
+    msgId,
+    msgSeq
   );
 }
 
 /**
  * 发送Markdown消息到群聊
  * @param {string} groupOpenid - 群聊的openid
- * @param {string} content - 占位内容
  * @param {object} markdown - Markdown对象
  * @param {string} [eventId] - 前置事件ID (可选)
  * @param {string} [msgId] - 前置消息ID (可选)
  * @returns {Promise<object>} 发送结果
  */
-async function sendMarkdownToGroup(groupOpenid, content, markdown, eventId = null, msgId = null) {
+async function sendMarkdownToGroup(
+  groupOpenid,
+  markdown,
+  eventId = null,
+  msgId = null,
+  msgSeq = 1
+) {
   return sendGroupMessage(
     groupOpenid,
     {
-      content,
       msg_type: 2, // Markdown消息
       markdown
     },
     eventId,
-    msgId
+    msgId,
+    msgSeq
   );
 }
 
@@ -168,7 +210,7 @@ async function sendMarkdownToGroup(groupOpenid, content, markdown, eventId = nul
  * @param {string} [msgId] - 前置消息ID (可选)
  * @returns {Promise<object>} 发送结果
  */
-async function sendMediaToGroup(groupOpenid, media, eventId = null, msgId = null) {
+async function sendMediaToGroup(groupOpenid, media, eventId = null, msgId = null, msgSeq = 1) {
   if (!media || !media.file_info) {
     throw new Error('富媒体消息必须包含file_info字段');
   }
@@ -176,14 +218,14 @@ async function sendMediaToGroup(groupOpenid, media, eventId = null, msgId = null
   return sendGroupMessage(
     groupOpenid,
     {
-      content: ' ', // 富媒体消息需要内容，即使是空的
       msg_type: 7, // 富媒体消息
       media: {
         file_info: media.file_info
       }
     },
     eventId,
-    msgId
+    msgId,
+    msgSeq
   );
 }
 
@@ -221,7 +263,8 @@ async function sendChannelMessage(channelId, messageData, eventId = null, msgId 
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `QQBot ${accessToken}`
-        }
+        },
+        timeout: QQ_API_TIMEOUT_MS
       }
     );
     
@@ -229,10 +272,7 @@ async function sendChannelMessage(channelId, messageData, eventId = null, msgId 
     return response.data;
     
   } catch (error) {
-    logger.error('发送频道消息失败', error.message);
-    if (error.response) {
-      logger.debug('QQ API 请求失败', { status: error.response.status });
-    }
+    logRequestError('发送频道消息失败', error);
     throw error;
   }
 }
@@ -329,19 +369,7 @@ async function sendC2CMessage(userOpenid, message, eventId = null, msgId = null,
       throw new Error('缺少用户openid参数');
     }
     
-    if (!message || !message.content) {
-      throw new Error('消息内容不能为空');
-    }
-    
-    // 确保msg_type有效
-    if (message.msg_type === undefined) {
-      message.msg_type = 0; // 默认为文本消息
-    }
-    
-    // 富媒体消息类型需要特殊处理
-    if (message.msg_type === 7 && message.content.trim() === '') {
-      message.content = ' '; // 富媒体消息content需要有值
-    }
+    validateTypedMessage(message);
     
     // 获取访问令牌
     const accessToken = await getAccessToken();
@@ -364,7 +392,8 @@ async function sendC2CMessage(userOpenid, message, eventId = null, msgId = null,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `QQBot ${accessToken}`
-        }
+        },
+        timeout: QQ_API_TIMEOUT_MS
       }
     );
     
@@ -372,10 +401,7 @@ async function sendC2CMessage(userOpenid, message, eventId = null, msgId = null,
     return response.data;
     
   } catch (error) {
-    logger.error('发送QQ单聊消息失败', error.message);
-    if (error.response) {
-      logger.debug('QQ API 请求失败', { status: error.response.status });
-    }
+    logRequestError('发送QQ单聊消息失败', error);
     throw error;
   }
 }
@@ -388,7 +414,7 @@ async function sendC2CMessage(userOpenid, message, eventId = null, msgId = null,
  * @param {string} [msgId] - 前置消息ID (可选)
  * @returns {Promise<object>} 发送结果
  */
-async function sendTextToC2C(userOpenid, content, eventId = null, msgId = null) {
+async function sendTextToC2C(userOpenid, content, eventId = null, msgId = null, msgSeq = 1) {
   return sendC2CMessage(
     userOpenid,
     {
@@ -396,7 +422,8 @@ async function sendTextToC2C(userOpenid, content, eventId = null, msgId = null) 
       msg_type: 0 // 文本消息
     },
     eventId,
-    msgId
+    msgId,
+    msgSeq
   );
 }
 
@@ -434,7 +461,8 @@ async function sendDirectMessage(guildId, messageData, eventId = null, msgId = n
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `QQBot ${accessToken}`
-        }
+        },
+        timeout: QQ_API_TIMEOUT_MS
       }
     );
     
@@ -442,10 +470,7 @@ async function sendDirectMessage(guildId, messageData, eventId = null, msgId = n
     return response.data;
     
   } catch (error) {
-    logger.error('发送频道私信消息失败', error.message);
-    if (error.response) {
-      logger.debug('QQ API 请求失败', { status: error.response.status });
-    }
+    logRequestError('发送频道私信消息失败', error);
     throw error;
   }
 }
@@ -483,5 +508,8 @@ module.exports = {
   sendTextToC2C,
   sendDirectMessage,
   sendTextToDirectMessage,
-  getAccessToken
+  getAccessToken,
+  QQ_API_ROOT,
+  QQ_API_TIMEOUT_MS,
+  validateTypedMessage
 }; 
