@@ -21,6 +21,8 @@ test('健康状态与本地 OpenAPI 可访问', async () => {
 
   const deferred = await request(app).get('/openapi/mbcd').expect(200);
   assert.match(deferred.body.data.message, /依赖.*数据库/);
+
+  await request(app).get('/openapi/uni?content=test').expect(404);
 });
 
 test('探针路径不会暴露环境文件', async () => {

@@ -35,9 +35,9 @@ npm start
 - `GET /admin`：管理页面
 - `/put/*`：频道文章
 - `/auto-push/*`：自动推送
-- `/openapi/*`：本地命令兼容接口
+- `/openapi/{mbi,mbd,opt,meu,mbtv,mbcd}`：具名命令兼容接口
 
-消息 handler 直接调用同进程命令服务；`/openapi/*` 仅用于兼容与诊断，不产生本机 HTTP 回环。
+消息 handler 直接把普通消息交给本地分发器，具名命令才进入对应命令处理器；不再存在旧版 `uni` 通用接口。
 
 ## 本地命令
 
@@ -45,7 +45,8 @@ npm start
 - `mbd <关键词>`：详细配方
 - `opt <关键词>`：释放卷属性
 - `meu <关键词>`：装备升级
-- 其他文本：QA 查询或通用命令
+- `boss` / `bosswork` / `boss工作表`：Boss 刷新时间表
+- 其他文本：QA 查询或内置本地功能
 - `关键词|回答`：管理员添加/更新 QA
 - `关键词|`：管理员删除 QA
 

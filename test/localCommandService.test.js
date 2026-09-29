@@ -9,7 +9,12 @@ process.env.QA_STORE_PATH = path.join(temporaryRoot, 'qa');
 process.env.IMAGE_DATA_DIR = path.join(temporaryRoot, 'images');
 process.env.QA_WRITE_USER_IDS = 'admin-user';
 
-const { executeCommand, parseCommand } = require('../services/localCommandService');
+const {
+  executeCommand,
+  executeInput,
+  executeMessage,
+  parseCommand
+} = require('../services/localCommandService');
 
 test.after(async () => {
   await fs.rm(temporaryRoot, { recursive: true, force: true });
@@ -21,7 +26,7 @@ test('统一解析有斜杠和无斜杠命令', () => {
     content: '工程手套'
   });
   assert.deepEqual(parseCommand('普通问答'), {
-    command: 'uni',
+    command: null,
     content: '普通问答'
   });
 });
@@ -31,7 +36,7 @@ test('数据库命令返回稳定占位回复', async () => {
   assert.equal(result.status, 'ok');
   assert.match(result.data.message, /依赖.*数据库/);
 
-  const calendar = await executeCommand('uni', '测试日历', {
+  const calendar = await executeMessage('测试日历', {
     groupId: 'group-a',
     userId: 'user-a'
   });
@@ -39,13 +44,13 @@ test('数据库命令返回稳定占位回复', async () => {
 });
 
 test('QA 按群隔离并限制写权限', async () => {
-  const denied = await executeCommand('uni', '关键词|回答', {
+  const denied = await executeMessage('关键词|回答', {
     groupId: 'group-a',
     userId: 'normal-user'
   });
   assert.equal(denied.data.message, '此功能仅限管理员使用');
 
-  const created = await executeCommand('uni', '关键词|回答', {
+  const created = await executeMessage('关键词|回答', {
     groupId: 'group-a',
     groupName: 'A群',
     userId: 'admin-user',
@@ -53,13 +58,13 @@ test('QA 按群隔离并限制写权限', async () => {
   });
   assert.equal(created.data.message, '关键词已添加');
 
-  const found = await executeCommand('uni', '关键词', {
+  const found = await executeMessage('关键词', {
     groupId: 'group-a',
     userId: 'normal-user'
   });
   assert.equal(found.data.message, '回答');
 
-  const isolated = await executeCommand('uni', '关键词', {
+  const isolated = await executeMessage('关键词', {
     groupId: 'group-b',
     userId: 'normal-user'
   });
@@ -69,7 +74,7 @@ test('QA 按群隔离并限制写权限', async () => {
 test('QA 同群并发写不会损坏 JSON', async () => {
   await Promise.all(
     Array.from({ length: 10 }, (_, index) =>
-      executeCommand('uni', `并发${index}|回答${index}`, {
+      executeMessage(`并发${index}|回答${index}`, {
         groupId: 'concurrent-group',
         userId: 'admin-user'
       })
@@ -82,19 +87,27 @@ test('QA 同群并发写不会损坏 JSON', async () => {
 });
 
 test('QA 删除与计算器 fallback', async () => {
-  await executeCommand('uni', '待删除|内容', {
+  await executeMessage('待删除|内容', {
     groupId: 'delete-group',
     userId: 'admin-user'
   });
-  const removed = await executeCommand('uni', '待删除|', {
+  const removed = await executeMessage('待删除|', {
     groupId: 'delete-group',
     userId: 'admin-user'
   });
   assert.equal(removed.data.message, '关键词已删除');
 
-  const calculation = await executeCommand('uni', '1+2', {
+  const calculation = await executeMessage('1+2', {
     groupId: 'delete-group',
     userId: 'normal-user'
   });
   assert.equal(calculation.data.message, '1+2=3');
+});
+
+test('普通消息直接进入本地分发而不是通用命令', async () => {
+  const result = await executeInput('今日专家', {
+    groupId: 'message-group',
+    userId: 'normal-user'
+  });
+  assert.match(result.data.message, /专家地下城/);
 });

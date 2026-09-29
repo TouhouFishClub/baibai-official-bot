@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { sendTextToChannel, sendImageToChannel } = require('../services/messageService');
 const { processBase64Image, getImageInfo } = require('../utils/imageProcessor');
-const { executeCommand, parseCommand } = require('../services/localCommandService');
+const { executeInput } = require('../services/localCommandService');
 const logger = require('../utils/logger');
 
 /**
@@ -50,31 +50,9 @@ async function handleChannelAtMessage(eventData, eventType = null) {
     // 记录收到的消息
     logger.message('频道', userName, trimmedContent);
     
-    const parsedCommand = parseCommand(trimmedContent);
-    const isValidCommand = parsedCommand.command !== 'uni';
-    const commandPrefix = parsedCommand.command;
-    const actualContent = parsedCommand.content;
-    
-    if (isValidCommand) {
-      // 命令处理日志将在API调用后显示
-      
-      // 构建API请求
-      const apiResponse = await callOpenAPI(commandPrefix, actualContent, author, member, guild_id);
-      
-      // 发送回复
-      if (apiResponse && apiResponse.status === "ok" && apiResponse.data) {
-        await sendReplyToChannel(apiResponse.data, channel_id, messageId);
-      }
-    } else {
-      // 使用uni接口处理未匹配命令
-      
-      // 未匹配到特定命令的消息都通过uni接口处理
-      const apiResponse = await callOpenAPI('uni', trimmedContent, author, member, guild_id);
-      
-      // 发送回复
-      if (apiResponse && apiResponse.status === "ok" && apiResponse.data) {
-        await sendReplyToChannel(apiResponse.data, channel_id, messageId);
-      }
+    const result = await processLocalMessage(trimmedContent, author, member, guild_id);
+    if (result && result.status === "ok" && result.data) {
+      await sendReplyToChannel(result.data, channel_id, messageId);
     }
   } catch (error) {
     logger.error('处理频道@消息失败', error.message);
@@ -242,16 +220,15 @@ function getChannelConfig() {
 }
 
 /**
- * 调用同进程本地命令服务
- * @param {string} command - 命令类型 (mbi, mbd, opt等)
- * @param {string} content - 实际内容
+ * 处理本地消息
+ * @param {string} input - 用户输入
  * @param {object} author - 用户信息对象
  * @param {object} member - 成员信息对象
  * @param {string} guildId - 服务器ID（频道所属的服务器）
  */
-async function callOpenAPI(command, content, author, member, guildId) {
+async function processLocalMessage(input, author, member, guildId) {
   const channelConfig = getChannelConfig();
-  return executeCommand(command, content, {
+  return executeInput(input, {
     userId: author.id,
     userName: author.username || (member && member.nick) || `QQ-${author.id}`,
     groupId: channelConfig.channel_exchange_group || guildId || 'global',

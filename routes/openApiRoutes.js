@@ -2,7 +2,7 @@ const express = require('express');
 const { COMMAND_PREFIXES, executeCommand } = require('../services/localCommandService');
 
 const router = express.Router();
-const supportedCommands = new Set([...COMMAND_PREFIXES, 'uni']);
+const supportedCommands = new Set(COMMAND_PREFIXES);
 
 router.get('/', (req, res) => {
   res.json({

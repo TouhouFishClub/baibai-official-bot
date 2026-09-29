@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { sendTextToC2C, sendTextToDirectMessage } = require('../services/messageService');
 const { processBase64Image, getImageInfo } = require('../utils/imageProcessor');
-const { executeCommand, parseCommand } = require('../services/localCommandService');
+const { executeInput } = require('../services/localCommandService');
 const logger = require('../utils/logger');
 
 /**
@@ -46,27 +46,21 @@ async function handleC2CMessage(eventData) {
     const trimmedContent = content.trim();
     logger.message('QQ私信', userName, trimmedContent);
     
-    const parsedCommand = parseCommand(trimmedContent);
-    const commandPrefix = parsedCommand.command;
-    const actualContent = parsedCommand.content;
-    
-    // 命令解析日志将在API调用后显示
-    
-    // 获取配置信息，用于调用openapi时获取group参数
+    // 获取本地消息分发所需的群组上下文
     const config = getChannelConfig();
     const groupId = config.channel_exchange_group;
     
-    // 调用openapi处理命令
+    // 在当前进程中处理消息
     try {
-      const apiResponse = await callOpenAPI(commandPrefix, actualContent, userId, groupId);
+      const result = await processLocalMessage(trimmedContent, userId, groupId);
       
       // 发送回复 - 使用原始消息ID作为被动消息
-      if (apiResponse && apiResponse.status === "ok" && apiResponse.data) {
-        await sendReplyToC2C(apiResponse.data, userId, messageId);
+      if (result && result.status === "ok" && result.data) {
+        await sendReplyToC2C(result.data, userId, messageId);
       }
       // 如果没有返回结果，静默处理，不发送回复
     } catch (apiError) {
-      logger.error('调用OpenAPI错误', apiError.message);
+      logger.error('本地消息处理错误', apiError.message);
       await sendFilteredTextToC2C(userId, '处理请求时发生错误，请稍后再试', null, messageId);
     }
     
@@ -94,25 +88,21 @@ async function handleDirectMessage(eventData) {
     
     // 消息内容预处理
     const trimmedContent = content.trim();
-    const parsedCommand = parseCommand(trimmedContent);
-    const commandPrefix = parsedCommand.command;
-    const actualContent = parsedCommand.content;
-    
-    // 获取配置信息，用于调用openapi时获取group参数
+    // 获取本地消息分发所需的群组上下文
     const config = getChannelConfig();
     const groupId = config.channel_exchange_group;
     
-    // 调用openapi处理命令
+    // 在当前进程中处理消息
     try {
-      const apiResponse = await callOpenAPI(commandPrefix, actualContent, userId, groupId, author.username);
+      const result = await processLocalMessage(trimmedContent, userId, groupId, author.username);
       
       // 发送回复 - 使用原始消息ID作为被动消息
-      if (apiResponse && apiResponse.status === "ok" && apiResponse.data) {
-        await sendReplyToDirectMessage(apiResponse.data, guild_id, messageId);
+      if (result && result.status === "ok" && result.data) {
+        await sendReplyToDirectMessage(result.data, guild_id, messageId);
       }
       // 如果没有返回结果，静默处理，不发送回复
     } catch (apiError) {
-      logger.error('调用OpenAPI错误', apiError.message);
+      logger.error('本地消息处理错误', apiError.message);
       await sendTextToDirectMessage(guild_id, '处理请求时发生错误，请稍后再试', null, messageId);
     }
     
@@ -122,17 +112,16 @@ async function handleDirectMessage(eventData) {
 }
 
 /**
- * 调用OpenAPI处理命令
- * @param {string} command - 命令类型
- * @param {string} content - 命令内容
+ * 处理本地消息
+ * @param {string} input - 用户输入
  * @param {string} userId - 用户ID
  * @param {string} groupId - 群组ID
  * @param {string} [userName] - 用户名 (可选)
- * @returns {Promise<string>} API返回结果
+ * @returns {Promise<object>} 本地处理结果
  */
-async function callOpenAPI(command, content, userId, groupId, userName = null) {
+async function processLocalMessage(input, userId, groupId, userName = null) {
   const config = getChannelConfig();
-  return executeCommand(command, content, {
+  return executeInput(input, {
     userId,
     userName: userName || `QQ-${userId}`,
     groupId: groupId || 'global',

@@ -23,7 +23,7 @@ function parseCommand(input) {
   const prefix = COMMAND_PREFIXES.find((candidate) => lowered.startsWith(candidate));
 
   if (!prefix) {
-    return { command: 'uni', content: original };
+    return { command: null, content: original };
   }
   return {
     command: prefix,
@@ -123,12 +123,17 @@ function whatToEat(prefix) {
   return `${prefix}${foods[Math.floor(Math.random() * foods.length)]}`;
 }
 
-async function executeUni(content, context) {
+async function executeMessage(content, context = {}) {
   const normalized = String(content || '').trim();
   const lower = normalized.toLowerCase();
 
   if (['bosswork', 'boss'].includes(lower) || normalized.startsWith('boss工作表')) {
-    return text('Boss 工作表原工程缺少必要图片资源，已记录待迁移事项。');
+    const { BossWork } = require('../features/mabinogi/BossWork/BossWork');
+    return ok(normalizeModuleResult(
+      await runCallbackModule((callback) =>
+        BossWork(context.userId || '0', context.groupId || 'global', callback)
+      )
+    ));
   }
   if (lower === 'ruawork' || (normalized.includes('茹娅') && normalized.includes('上班'))) {
     const rua = require('../features/mabinogi/ruawork');
@@ -201,8 +206,11 @@ async function executeUni(content, context) {
 }
 
 async function executeCommand(command, content, context = {}) {
-  const normalizedCommand = String(command || 'uni').toLowerCase();
+  const normalizedCommand = String(command || '').toLowerCase();
   const normalizedContent = String(content || '').trim();
+  if (!COMMAND_PREFIXES.includes(normalizedCommand)) {
+    return { status: 'error', message: '不支持的命令' };
+  }
   logger.command(normalizedCommand, normalizedContent);
 
   if (!normalizedContent && !['mbtv', 'mbcd'].includes(normalizedCommand)) {
@@ -244,9 +252,6 @@ async function executeCommand(command, content, context = {}) {
       return text(DATABASE_TODO_MESSAGE);
     }
 
-    if (normalizedCommand === 'uni') {
-      return executeUni(normalizedContent, context);
-    }
     return { status: 'error', message: '不支持的命令' };
   } catch (error) {
     logger.error(`本地命令失败 (${normalizedCommand})`, error.message);
@@ -254,10 +259,19 @@ async function executeCommand(command, content, context = {}) {
   }
 }
 
+async function executeInput(input, context = {}) {
+  const parsed = parseCommand(input);
+  return parsed.command
+    ? executeCommand(parsed.command, parsed.content, context)
+    : executeMessage(parsed.content, context);
+}
+
 module.exports = {
   COMMAND_PREFIXES,
   DATABASE_TODO_MESSAGE,
   executeCommand,
+  executeInput,
+  executeMessage,
   parseCommand,
   canWriteQa
 };

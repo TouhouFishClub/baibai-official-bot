@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { sendTextToGroup, sendMediaToGroup } = require('../services/messageService');
 const { processBase64Image, getImageInfo } = require('../utils/imageProcessor');
-const { executeCommand, parseCommand } = require('../services/localCommandService');
+const { executeInput } = require('../services/localCommandService');
 const logger = require('../utils/logger');
 
 const recentGroupMessageIds = new Map();
@@ -74,31 +74,9 @@ async function handleGroupAtMessage(eventData, eventType = null) {
       return;
     }
     
-    const parsedCommand = parseCommand(trimmedContent);
-    const isValidCommand = parsedCommand.command !== 'uni';
-    const commandPrefix = parsedCommand.command;
-    const actualContent = parsedCommand.content;
-    
-    if (isValidCommand) {
-      logger.command(commandPrefix, actualContent);
-      
-      // 构建API请求
-      const apiResponse = await callOpenAPI(commandPrefix, actualContent, author.id, group_id);
-      
-      // 发送回复
-      if (apiResponse && apiResponse.status === "ok" && apiResponse.data) {
-        await sendReplyToGroup(apiResponse.data, group_openid, messageId);
-      }
-    } else {
-      logger.debug('使用uni接口处理未匹配命令');
-      
-      // 未匹配到特定命令的消息都通过uni接口处理
-      const apiResponse = await callOpenAPI('uni', trimmedContent, author.id, group_id);
-      
-      // 发送回复
-      if (apiResponse && apiResponse.status === "ok" && apiResponse.data) {
-        await sendReplyToGroup(apiResponse.data, group_openid, messageId);
-      }
+    const result = await processLocalMessage(trimmedContent, author.id, group_id);
+    if (result && result.status === "ok" && result.data) {
+      await sendReplyToGroup(result.data, group_openid, messageId);
     }
   } catch (error) {
     logger.error('处理群聊@消息失败', error.message);
@@ -341,15 +319,14 @@ function getMappedGroupId(groupId) {
 }
 
 /**
- * 调用同进程本地命令服务
- * @param {string} command - 命令类型 (mbi, mbd, opt等)
- * @param {string} content - 实际内容
+ * 处理本地消息
+ * @param {string} input - 用户输入
  * @param {string} userId - 用户ID
  * @param {string} groupId - 群组ID
  */
-async function callOpenAPI(command, content, userId, groupId) {
+async function processLocalMessage(input, userId, groupId) {
   const mappedGroupId = getMappedGroupId(groupId);
-  return executeCommand(command, content, {
+  return executeInput(input, {
     userId,
     userName: `QQ-${userId}`,
     groupId: mappedGroupId || groupId || 'global',
