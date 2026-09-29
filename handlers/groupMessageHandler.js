@@ -69,14 +69,17 @@ async function handleGroupAtMessage(eventData, eventType = null) {
       return;
     }
     
-    logger.debug('群消息准备本地处理', {
-      hasGroupOpenid: Boolean(eventData.group_openid),
-      usingGroupIdFallback: !eventData.group_openid && Boolean(eventData.group_id),
-      replyGroupOpenidPresent: Boolean(replyGroupOpenid)
+    const userId = author?.id || author?.member_openid || author?.user_openid;
+    logger.message({
+      type: '群',
+      eventType: eventType || 'GROUP_AT_MESSAGE_CREATE',
+      groupId: replyGroupOpenid,
+      userId,
+      content: trimmedContent
     });
 
     const startedAt = Date.now();
-    const result = await processLocalMessage(trimmedContent, author.id, replyGroupOpenid);
+    const result = await processLocalMessage(trimmedContent, userId, replyGroupOpenid);
     logger.debug('群消息本地处理完成', {
       durationMs: Date.now() - startedAt,
       status: result?.status,
@@ -85,7 +88,7 @@ async function handleGroupAtMessage(eventData, eventType = null) {
     });
 
     if (result && result.status === "ok" && result.data) {
-      await sendReplyToGroup(result.data, replyGroupOpenid, messageId);
+      await sendReplyToGroup(result.data, replyGroupOpenid, messageId, userId);
     }
   } catch (error) {
     logger.error('处理群聊@消息失败', error);
@@ -98,8 +101,15 @@ async function handleGroupAtMessage(eventData, eventType = null) {
  * @param {string} groupOpenid - 群聊openid
  * @param {string} messageId - 用户消息ID
  */
-async function sendReplyToGroup(responseData, groupOpenid, messageId) {
+async function sendReplyToGroup(responseData, groupOpenid, messageId, userId = null) {
   try {
+    logger.reply({
+      type: '群',
+      groupId: groupOpenid,
+      userId,
+      content: logger.describeReplyPayload(responseData)
+    });
+
     logger.debug('准备发送群聊回复', {
       responseType: responseData?.type,
       groupOpenidPresent: Boolean(groupOpenid),

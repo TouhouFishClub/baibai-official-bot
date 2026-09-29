@@ -3,16 +3,10 @@
  * 负责发送各类消息到QQ平台
  */
 
-const dns = require('dns');
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
 const axios = require('axios');
 const logger = require('../utils/logger');
-
-if (typeof dns.setDefaultResultOrder === 'function') {
-  dns.setDefaultResultOrder('ipv4first');
-}
 
 // 默认沿用已验证可通的旧域名；新文档域名可通过环境变量覆盖。
 const QQ_API_ROOT = String(process.env.QQ_API_ROOT || 'https://api.sgroup.qq.com').replace(/\/+$/, '');
@@ -23,46 +17,13 @@ const configuredTimeout = Number(process.env.QQ_API_TIMEOUT_MS);
 const QQ_API_TIMEOUT_MS = Number.isFinite(configuredTimeout) && configuredTimeout > 0
   ? configuredTimeout
   : 15000;
-const DNS_TIMEOUT_MS = Math.min(5000, QQ_API_TIMEOUT_MS);
 let cachedAccessToken = null;
 let accessTokenExpiresAt = 0;
 let accessTokenRequest = null;
 
-function forceLog(line) {
-  logger.info(line);
-  try {
-    fs.writeSync(1, `${line}\n`);
-  } catch (_) {
-    // PM2 管道上 writeSync 失败时仍保留 logger 输出。
-  }
-}
-
-function withTimeout(promise, ms, label) {
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => {
-      const error = new Error(`${label} 超时（${ms}ms）`);
-      error.code = 'ETIMEDOUT';
-      forceLog(`[QQ] ${error.message}`);
-      reject(error);
-    }, ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
-
-function lookupIpv4(hostname) {
-  return new Promise((resolve, reject) => {
-    dns.lookup(hostname, { family: 4 }, (error, address) => {
-      if (error) reject(error);
-      else resolve(address);
-    });
-  });
-}
-
 function qqRequestConfig(headers = {}) {
   return {
     timeout: QQ_API_TIMEOUT_MS,
-    family: 4,
     headers
   };
 }
@@ -75,31 +36,11 @@ async function qqRequest(method, url, data, headers = {}) {
     path: parsed.pathname
   });
 
-  const lookupPromise = lookupIpv4(parsed.hostname);
-  lookupPromise.catch(() => undefined);
-  const address = await withTimeout(
-    lookupPromise,
-    DNS_TIMEOUT_MS,
-    `DNS ${parsed.hostname}`
-  );
-  logger.debug('QQ DNS 完成', { host: parsed.hostname, address });
-
-  const requestUrl = `${parsed.protocol}//${address}${parsed.pathname}${parsed.search}`;
-  const agent = new https.Agent({
-    keepAlive: false,
-    servername: parsed.hostname,
-    lookup: (_host, _options, callback) => callback(null, address, 4)
-  });
   const axiosConfig = {
     method,
-    url: requestUrl,
-    headers: {
-      Host: parsed.hostname,
-      ...headers
-    },
-    timeout: QQ_API_TIMEOUT_MS,
-    family: 4,
-    httpsAgent: agent
+    url,
+    headers: { ...headers },
+    timeout: QQ_API_TIMEOUT_MS
   };
   if (method !== 'GET' && method !== 'HEAD') {
     axiosConfig.data = data;
@@ -118,17 +59,8 @@ async function qqRequest(method, url, data, headers = {}) {
       Object.assign(axiosConfig.headers, data.getHeaders());
     }
   }
-  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-    axiosConfig.signal = AbortSignal.timeout(QQ_API_TIMEOUT_MS);
-  }
 
-  const requestPromise = axios(axiosConfig);
-  requestPromise.catch(() => undefined);
-  return withTimeout(
-    requestPromise,
-    QQ_API_TIMEOUT_MS,
-    `${method} ${parsed.hostname}${parsed.pathname}`
-  );
+  return axios(axiosConfig);
 }
 
 function logRequestError(message, error) {
@@ -715,6 +647,6 @@ module.exports = {
   QQ_API_TIMEOUT_MS,
   qqRequest,
   qqRequestConfig,
-  withTimeout,
   validateTypedMessage
-}; 
+};
+ 

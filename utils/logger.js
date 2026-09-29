@@ -205,29 +205,40 @@ function push(configName, action, result = null) {
  * 命令处理日志
  */
 function command(cmd, content, result = null) {
-  const timestamp = getTimestamp();
   const contentLength = String(content || '').length;
-  if (result) {
-    console.log(`[${timestamp}] 命令: /${cmd} (${contentLength}字符) -> ${result}`);
-  } else {
-    console.log(`[${timestamp}] 命令: /${cmd} (${contentLength}字符)`);
+  const line = result
+    ? `命令: /${cmd} (${contentLength}字符) -> ${result}`
+    : `命令: /${cmd} (${contentLength}字符)`;
+  debug(line);
+}
+
+function dash(value) {
+  const text = String(value ?? '').trim();
+  return text || '-';
+}
+
+function describeReplyPayload(responseData) {
+  if (!responseData || typeof responseData !== 'object') return '';
+  if (responseData.type === 'image') {
+    const name = responseData.path
+      ? String(responseData.path).split(/[/\\]/).pop()
+      : 'image';
+    const caption = String(responseData.message || '').trim();
+    return caption ? `[图片] ${name} ${caption}` : `[图片] ${name}`;
   }
+  return String(responseData.message || '');
 }
 
-/**
- * 消息日志（用于频道和私信）
- */
-function message(type, user, content) {
-  const timestamp = getTimestamp();
-  console.log(`[${timestamp}] [${type}][${user}] 收到消息 (${String(content || '').length}字符)`);
+function formatTrafficLine({ type, eventType, groupId, userId, content }) {
+  return `[${dash(type)}][${dash(eventType)}][${dash(groupId)}][${dash(userId)}] ${singleLine(content, 300)}`;
 }
 
-/**
- * 回复日志（用于频道和私信）
- */
-function reply(type, content) {
-  const timestamp = getTimestamp();
-  console.log(`[${timestamp}] [${type}][发送] 回复 (${String(content || '').length}字符)`);
+function message({ type, eventType, groupId, userId, content } = {}) {
+  log('INFO', formatTrafficLine({ type, eventType, groupId, userId, content }));
+}
+
+function reply({ type, groupId, userId, content, eventType = '发送' } = {}) {
+  log('INFO', formatTrafficLine({ type, eventType, groupId, userId, content }));
 }
 
 module.exports = {
@@ -241,6 +252,7 @@ module.exports = {
   command,
   message,
   reply,
+  describeReplyPayload,
   getErrorDetails,
   LOG_LEVELS,
   get currentLogLevel() {

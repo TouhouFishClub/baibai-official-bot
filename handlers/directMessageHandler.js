@@ -36,9 +36,6 @@ function getChannelConfig() {
  */
 async function handleC2CMessage(eventData) {
   try {
-    const userName = eventData.author?.username || '未知用户';
-    
-    // 获取消息内容和相关信息
     const { content, author, id: messageId } = eventData;
     const userId = author.user_openid || author.union_openid;
     
@@ -50,7 +47,13 @@ async function handleC2CMessage(eventData) {
     
     // 消息内容预处理
     const trimmedContent = content.trim();
-    logger.message('QQ私信', userName, trimmedContent);
+    logger.message({
+      type: '私聊',
+      eventType: 'C2C_MESSAGE_CREATE',
+      groupId: '-',
+      userId,
+      content: trimmedContent
+    });
     
     // 获取本地消息分发所需的群组上下文
     const config = getChannelConfig();
@@ -67,6 +70,12 @@ async function handleC2CMessage(eventData) {
       // 如果没有返回结果，静默处理，不发送回复
     } catch (apiError) {
       logger.error('本地消息处理错误', apiError.message);
+      logger.reply({
+        type: '私聊',
+        groupId: '-',
+        userId,
+        content: '处理请求时发生错误，请稍后再试'
+      });
       await sendFilteredTextToC2C(userId, '处理请求时发生错误，请稍后再试', null, messageId);
     }
     
@@ -94,6 +103,13 @@ async function handleDirectMessage(eventData) {
     
     // 消息内容预处理
     const trimmedContent = content.trim();
+    logger.message({
+      type: '频道私信',
+      eventType: 'DIRECT_MESSAGE_CREATE',
+      groupId: guild_id,
+      userId,
+      content: trimmedContent
+    });
     // 获取本地消息分发所需的群组上下文
     const config = getChannelConfig();
     const groupId = config.channel_exchange_group;
@@ -104,11 +120,17 @@ async function handleDirectMessage(eventData) {
       
       // 发送回复 - 使用原始消息ID作为被动消息
       if (result && result.status === "ok" && result.data) {
-        await sendReplyToDirectMessage(result.data, guild_id, messageId);
+        await sendReplyToDirectMessage(result.data, guild_id, messageId, userId);
       }
       // 如果没有返回结果，静默处理，不发送回复
     } catch (apiError) {
       logger.error('本地消息处理错误', apiError.message);
+      logger.reply({
+        type: '频道私信',
+        groupId: guild_id,
+        userId,
+        content: '处理请求时发生错误，请稍后再试'
+      });
       await sendTextToDirectMessage(guild_id, '处理请求时发生错误，请稍后再试', null, messageId);
     }
     
@@ -171,6 +193,13 @@ async function sendFilteredTextToC2C(userOpenid, message, eventId = null, msgId 
  */
 async function sendReplyToC2C(responseData, userOpenid, messageId) {
   try {
+    logger.reply({
+      type: '私聊',
+      groupId: '-',
+      userId: userOpenid,
+      content: logger.describeReplyPayload(responseData)
+    });
+
     if (responseData.type === "image" && responseData.base64 && responseData.path) {
       // 处理图片消息 - QQ私信需要先上传获取file_info，类似群聊
       // 创建临时图片目录
@@ -238,8 +267,15 @@ async function sendReplyToC2C(responseData, userOpenid, messageId) {
  * @param {string} guildId - 频道服务器ID
  * @param {string} messageId - 用户消息ID
  */
-async function sendReplyToDirectMessage(responseData, guildId, messageId) {
+async function sendReplyToDirectMessage(responseData, guildId, messageId, userId = null) {
   try {
+    logger.reply({
+      type: '频道私信',
+      groupId: guildId,
+      userId,
+      content: logger.describeReplyPayload(responseData)
+    });
+
     if (responseData.type === "image" && responseData.base64 && responseData.path) {
       // 处理图片消息 - 频道私信走本地 file_image 上传
       // 创建临时图片目录

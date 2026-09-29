@@ -17,10 +17,7 @@ async function handleChannelAtMessage(eventData, eventType = null) {
   try {
     // 获取消息内容和相关信息
     // 注意：频道消息的数据结构与群聊消息不同
-    const { content, author, member, channel_id, guild_id, id: messageId, attachments } = eventData;
-    
-    // 获取用户名称用于日志
-    const userName = (member && member.nick) || author.username || '未知用户';
+    const { content, author, member, channel_id, guild_id, id: messageId } = eventData;
     
     // 检查是否有文本内容，如果没有则直接忽略
     if (!content) {
@@ -47,11 +44,17 @@ async function handleChannelAtMessage(eventData, eventType = null) {
     trimmedContent = trimmedContent.replace(/<@!\d+>\s*/g, '').trim();
     
     // 记录收到的消息
-    logger.message('频道', userName, trimmedContent);
+    logger.message({
+      type: '频道',
+      eventType: eventType || 'AT_MESSAGE_CREATE',
+      groupId: channel_id,
+      userId: author?.id,
+      content: trimmedContent
+    });
     
     const result = await processLocalMessage(trimmedContent, author, member, guild_id);
     if (result && result.status === "ok" && result.data) {
-      await sendReplyToChannel(result.data, channel_id, messageId);
+      await sendReplyToChannel(result.data, channel_id, messageId, author?.id);
     }
   } catch (error) {
     logger.error('处理频道@消息失败', error.message);
@@ -64,8 +67,15 @@ async function handleChannelAtMessage(eventData, eventType = null) {
  * @param {string} channelId - 频道ID
  * @param {string} messageId - 用户消息ID
  */
-async function sendReplyToChannel(responseData, channelId, messageId) {
+async function sendReplyToChannel(responseData, channelId, messageId, userId = null) {
   try {
+    logger.reply({
+      type: '频道',
+      groupId: channelId,
+      userId,
+      content: logger.describeReplyPayload(responseData)
+    });
+
     if (responseData.type === "image" && responseData.base64 && responseData.path) {
       // 处理图片消息
       // 创建临时图片目录

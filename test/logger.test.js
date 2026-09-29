@@ -2,6 +2,42 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const logger = require('../utils/logger');
 
+test('收发消息按通道、事件、会话和用户输出', () => {
+  const normalLines = [];
+  const originalLog = console.log;
+  console.log = (...args) => normalLines.push(args.join(' '));
+  const originalLevel = process.env.LOG_LEVEL;
+  process.env.LOG_LEVEL = 'info';
+
+  try {
+    logger.message({
+      type: '群',
+      eventType: 'GROUP_AT_MESSAGE_CREATE',
+      groupId: 'g1',
+      userId: 'u1',
+      content: '/mbi 释魂'
+    });
+    logger.reply({
+      type: '频道私信',
+      groupId: 'guild-1',
+      userId: 'u2',
+      content: logger.describeReplyPayload({
+        type: 'image',
+        path: '/tmp/MabiGC.png',
+        message: '附言'
+      })
+    });
+  } finally {
+    console.log = originalLog;
+    if (originalLevel === undefined) delete process.env.LOG_LEVEL;
+    else process.env.LOG_LEVEL = originalLevel;
+  }
+
+  assert.equal(normalLines.length, 2);
+  assert.match(normalLines[0], /\[群\]\[GROUP_AT_MESSAGE_CREATE\]\[g1\]\[u1\] \/mbi 释魂/);
+  assert.match(normalLines[1], /\[频道私信\]\[发送\]\[guild-1\]\[u2\] \[图片\] MabiGC.png 附言/);
+});
+
 test('错误日志分流并压缩 Axios 错误对象', () => {
   const normalLines = [];
   const errorLines = [];
