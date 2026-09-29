@@ -1,17 +1,61 @@
 const fs = require('fs');
+const path = require('path');
+
+function normalizePath(filePath) {
+  return String(filePath || '').replace(/\\/g, '/');
+}
+
+function isSnapChromiumElf(filePath) {
+  return /\/snap\/chromium\/.+\/chromium-browser\/(chrome|chromium)$/.test(normalizePath(filePath));
+}
+
+function isSnapChromiumLauncher(filePath) {
+  const normalized = normalizePath(filePath);
+  return normalized === '/snap/bin/chromium' || normalized.endsWith('/snap/bin/chromium');
+}
+
+function findPuppeteerCachedChrome() {
+  const roots = [
+    process.env.PUPPETEER_CACHE_DIR,
+    process.env.HOME ? path.join(process.env.HOME, '.cache', 'puppeteer') : '',
+    path.join('/root', '.cache', 'puppeteer')
+  ].filter(Boolean);
+
+  const relativeCandidates = [
+    ['chrome-linux64', 'chrome'],
+    ['chrome-headless-shell-linux64', 'chrome-headless-shell'],
+    ['chrome-linux', 'chrome']
+  ];
+
+  for (const root of [...new Set(roots)]) {
+    const chromeRoot = path.join(root, 'chrome');
+    if (!fs.existsSync(chromeRoot)) {
+      continue;
+    }
+
+    let versions = [];
+    try {
+      versions = fs.readdirSync(chromeRoot);
+    } catch (_) {
+      continue;
+    }
+
+    for (const version of versions.reverse()) {
+      for (const parts of relativeCandidates) {
+        const candidate = path.join(chromeRoot, version, ...parts);
+        if (fs.existsSync(candidate) && !isSnapChromiumElf(candidate)) {
+          return candidate;
+        }
+      }
+    }
+  }
+
+  return undefined;
+}
 
 function findBrowserExecutable() {
   const configured = process.env.BROWSER_EXECUTABLE_PATH || process.env.PUPPETEER_EXECUTABLE_PATH;
-  if (configured && fs.existsSync(configured)) {
-    if (configured === '/snap/bin/chromium') {
-      const snapChrome = [
-        '/snap/chromium/current/usr/lib/chromium-browser/chrome',
-        '/snap/chromium/current/usr/lib/chromium-browser/chromium'
-      ].find((candidate) => fs.existsSync(candidate));
-      if (snapChrome) {
-        return snapChrome;
-      }
-    }
+  if (configured && fs.existsSync(configured) && !isSnapChromiumElf(configured)) {
     return configured;
   }
 
@@ -28,17 +72,21 @@ function findBrowserExecutable() {
         '/usr/bin/google-chrome-stable',
         '/usr/bin/chromium',
         '/usr/bin/chromium-browser',
-        '/snap/chromium/current/usr/lib/chromium-browser/chrome',
-        '/snap/chromium/current/usr/lib/chromium-browser/chromium',
-        '/snap/bin/chromium'
+        '/snap/bin/chromium',
+        findPuppeteerCachedChrome()
       ];
 
-  return candidates.find((candidate) => candidate && fs.existsSync(candidate));
+  return candidates.find((candidate) => (
+    candidate && fs.existsSync(candidate) && !isSnapChromiumElf(candidate)
+  ));
 }
 
 function getBrowserLaunchOptions(extra = {}) {
   const executablePath = findBrowserExecutable();
   const { args: extraArgs, ...rest } = extra;
+  const snapArgs = isSnapChromiumLauncher(executablePath)
+    ? ['--no-first-run', '--no-zygote', '--single-process']
+    : [];
   return {
     headless: true,
     args: [...new Set([
@@ -46,6 +94,7 @@ function getBrowserLaunchOptions(extra = {}) {
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-gpu',
+      ...snapArgs,
       ...(extraArgs || [])
     ])],
     ...(executablePath ? { executablePath } : {}),
@@ -55,5 +104,7 @@ function getBrowserLaunchOptions(extra = {}) {
 
 module.exports = {
   findBrowserExecutable,
-  getBrowserLaunchOptions
+  getBrowserLaunchOptions,
+  isSnapChromiumElf,
+  isSnapChromiumLauncher
 };

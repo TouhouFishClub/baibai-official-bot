@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { getBrowserLaunchOptions } = require('./browserOptions');
+const logger = require('./logger');
 
 let puppeteerPromise;
 
@@ -27,10 +28,14 @@ async function htmlToImage({
   fs.mkdirSync(path.dirname(output), { recursive: true });
 
   const puppeteer = await loadPuppeteer();
-  const browser = await puppeteer.launch({
+  const launchOptions = {
     ...getBrowserLaunchOptions(),
     ...puppeteerArgs
+  };
+  logger.debug('启动浏览器', {
+    executablePath: launchOptions.executablePath || 'puppeteer默认'
   });
+  const browser = await puppeteer.launch(launchOptions);
 
   try {
     const page = await browser.newPage();
