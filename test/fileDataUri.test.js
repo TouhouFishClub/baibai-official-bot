@@ -8,13 +8,17 @@ const { fileToDataUri, resetFileDataUriCache } = require('../utils/fileDataUri')
 test('本地文件可转为 data URI，缺失文件返回空', () => {
   resetFileDataUriCache();
   const filePath = path.join(os.tmpdir(), `data-uri-${process.pid}.png`);
+  const fontPath = path.join(os.tmpdir(), `data-uri-${process.pid}.ttf`);
   fs.writeFileSync(filePath, Buffer.from('png'));
+  fs.writeFileSync(fontPath, Buffer.from('ttf'));
   try {
     assert.match(fileToDataUri(filePath), /^data:image\/png;base64,/);
+    assert.match(fileToDataUri(fontPath), /^data:font\/ttf;base64,/);
     assert.equal(fileToDataUri(`${filePath}.missing`), '');
   } finally {
     resetFileDataUriCache();
     fs.unlinkSync(filePath);
+    fs.unlinkSync(fontPath);
   }
 });
 

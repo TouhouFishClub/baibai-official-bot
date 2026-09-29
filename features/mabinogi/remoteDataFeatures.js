@@ -6,6 +6,9 @@ const { parseMbtvsArgs, renderStatsImage: renderMbtvStatsImage } = require('./Te
 const { parseMbcdsArgs, renderStatsImage: renderMbcdStatsImage } = require('./Television/mbcdStats');
 const { parseMbzzsArgs, renderStatsImage: renderMbzzStatsImage } = require('./Television/mbzzStats');
 const { renderSmugglerFromBridge } = require('./smuggler/renderSmuggler');
+const { renderMblogsList } = require('./logs/renderMblogsList');
+const { DUNGEONS, BOSSES } = require('../../legacy-data-bridge/shared/mblogsBossConfig');
+const { CLASSES, formatClassHelpLine } = require('../../legacy-data-bridge/shared/mblogsClassConfig');
 
 function pad2(n) {
   return n < 10 ? `0${n}` : `${n}`;
@@ -135,46 +138,126 @@ async function queryTelevisionStats(kind, content) {
   return `[CQ:image,file=${path.join('send', 'mabi_other', 'MabiTVStats.png')}]`;
 }
 
+const DEFAULT_DUNGEON = '布里列赫';
+const DEFAULT_RANK = 10;
+const BOSS_DEFAULT_RANK = 30;
+
+function isMblogsHelpRequest(content) {
+  const tokens = String(content || '').trim().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return false;
+  return tokens.some((token) => token === '--help' || token.toLowerCase() === 'help' || token === '帮助');
+}
+
+function buildMblogsHelp() {
+  const bossNames = [...new Set(BOSSES.map((boss) => boss.displayName))].join('、');
+  const classNames = CLASSES.map(formatClassHelpLine).join('、');
+  return [
+    '【mblogs DPS 查询帮助】',
+    '',
+    '基本用法：',
+    `  mblogs                    默认查询${DEFAULT_DUNGEON}，各 Boss 前${DEFAULT_RANK}名`,
+    '  mblogs 角色名             查询该角色各 Boss 最高 DPS（按 Boss 分段）',
+    `  mblogs ${DEFAULT_DUNGEON}           查询副本各 Boss 排行榜`,
+    `  mblogs Boss名             查询单个 Boss，默认前${BOSS_DEFAULT_RANK}名`,
+    '',
+    '参数：',
+    '  --rank N    显示前 N 名（副本默认 10，Boss 默认 30，角色默认 3；普通用户最多 30）',
+    '  --job 职业名  只显示指定职业（模糊匹配）',
+    '  --all       显示全部记录，不做「每角色仅保留最高 DPS」去重',
+    '  --help      显示本帮助',
+    '',
+    '示例：',
+    '  mblogs 布里列赫 --rank 20',
+    '  mblogs 枯木之佩塔克 --job 流子',
+    '  mblogs 枯木之佩塔克 --rank 15 --job 黑魔导士',
+    '  mblogs 布里列赫 --all',
+    '  mblogs --help',
+    '',
+    `支持副本：${DUNGEONS.map((item) => item.name).join('、')}`,
+    `支持 Boss：${bossNames}`,
+    `支持职业：${classNames}`
+  ].join('\n');
+}
+
 function parseMblogsInput(content) {
   const tokens = String(content || '').trim().split(/\s+/).filter(Boolean);
-  const result = { keyword: '', rank: 10, job: '', showAll: false };
-  const keyword = [];
-  for (let index = 0; index < tokens.length; index += 1) {
-    if (tokens[index] === '--rank') {
-      result.rank = Math.min(Math.max(Number(tokens[++index]) || 10, 1), 30);
-    } else if (tokens[index] === '--job') {
-      result.job = tokens[++index] || '';
-    } else if (tokens[index] === '--all') {
-      result.showAll = true;
-    } else {
-      keyword.push(tokens[index]);
+  let showAll = false;
+  let help = false;
+  let rank = null;
+  let job = null;
+  const keywordParts = [];
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    if (token === '--help' || token.toLowerCase() === 'help' || token === '帮助') {
+      help = true;
+      continue;
     }
+    if (token === '--all') {
+      showAll = true;
+      continue;
+    }
+    if (token === '--withskill') {
+      continue;
+    }
+    if (token === '--rank') {
+      const value = Number(tokens[++i]);
+      if (Number.isFinite(value) && value > 0) {
+        rank = Math.floor(value);
+      }
+      continue;
+    }
+    if (token === '--job') {
+      const jobParts = [];
+      while (i + 1 < tokens.length && !String(tokens[i + 1]).startsWith('--')) {
+        jobParts.push(tokens[++i]);
+      }
+      job = jobParts.join(' ').trim() || null;
+      continue;
+    }
+    if (token === '--show') {
+      while (i + 1 < tokens.length && !String(tokens[i + 1]).startsWith('--')) i += 1;
+      continue;
+    }
+    keywordParts.push(token);
   }
-  result.keyword = keyword.join(' ') || '布里列赫';
-  return result;
+
+  return {
+    keyword: keywordParts.join(' '),
+    showAll,
+    help,
+    rank,
+    job
+  };
 }
 
 async function queryMblogs(content) {
-  if (/^(help|帮助|--help)$/i.test(String(content || '').trim())) {
-    return '用法：mblogs [角色/副本/Boss] [--rank 1-30] [--job 职业] [--all]';
+  if (isMblogsHelpRequest(content)) {
+    return buildMblogsHelp();
   }
   const params = parseMblogsInput(content);
-  const data = await getBridgeClient().mblogs(params);
-  if (!data.rows.length) return '未找到已同意公开排行的 DPS 记录';
-  return renderLegacyTable({
-    fileName: 'MabiLogs.png',
-    title: `DPS 排行：${data.keyword}`,
-    description: `显示前 ${data.rank} 条；匿名玩家已脱敏`,
-    columns: [
-      { label: '角色', key: 'characterName' },
-      { label: '职业', key: 'characterClass' },
-      { label: '副本', key: 'dungeonName' },
-      { label: 'Boss', key: 'bossName' },
-      { label: 'DPS', key: 'dps', format: (value) => Number(value || 0).toLocaleString() },
-      { label: '时间', key: 'recordTime', format: formatRecordTime }
-    ],
-    rows: data.rows
+  if (params.help) return buildMblogsHelp();
+
+  const data = await getBridgeClient().mblogs({
+    keyword: params.keyword || DEFAULT_DUNGEON,
+    rank: params.rank,
+    job: params.job || '',
+    showAll: params.showAll
   });
+  if (data.error) return data.error;
+  if (!data.sections?.some((section) => section.rows?.length)) {
+    return '未找到已同意参与公开排行的 DPS 记录';
+  }
+
+  const output = path.join(IMAGE_DATA, 'mabi_other', 'MabiLogs.png');
+  await renderMblogsList({
+    title: data.title,
+    description: data.description,
+    output,
+    showMode: 'hidden',
+    sections: data.sections
+  });
+  return `[CQ:image,file=${path.join('send', 'mabi_other', 'MabiLogs.png')}]`;
 }
 
 async function querySmuggler({ superQuery = false } = {}) {
@@ -191,5 +274,6 @@ module.exports = {
   parseMbtvsArgs,
   parseMbcdsArgs,
   parseMbzzsArgs,
-  formatRecordTime
+  formatRecordTime,
+  buildMblogsHelp
 };

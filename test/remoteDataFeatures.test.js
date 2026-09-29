@@ -8,16 +8,28 @@ const {
 } = require('../features/mabinogi/remoteDataFeatures');
 const { computeSmugglerStatus } = require('../features/mabinogi/smuggler/renderSmuggler');
 
-test('mblogs 参数在新服务器本地解析并限制排行数量', () => {
+test('mblogs 参数在新服务器本地解析，排行上限由查询类型决定', () => {
   assert.deepEqual(
     parseMblogsInput('布里列赫 --rank 100 --job 黑魔导士 --all'),
     {
       keyword: '布里列赫',
-      rank: 30,
+      rank: 100,
       job: '黑魔导士',
-      showAll: true
+      showAll: true,
+      help: false
     }
   );
+  assert.equal(parseMblogsInput('').keyword, '');
+  assert.equal(parseMblogsInput('--job 流 子').job, '流 子');
+});
+
+test('mblogs 帮助文本与原版公开用法一致', () => {
+  const { buildMblogsHelp } = require('../features/mabinogi/remoteDataFeatures');
+  const help = buildMblogsHelp();
+  assert.match(help, /【mblogs DPS 查询帮助】/);
+  assert.match(help, /布里列赫/);
+  assert.match(help, /--rank N/);
+  assert.doesNotMatch(help, /AI锐评/);
 });
 
 test('统计命令参数与原版一致', () => {
@@ -42,4 +54,32 @@ test('走私状态由最近观测反推当前相位', () => {
   assert.equal(status.status, 'forecast');
   assert.equal(status.item, '儿童药水');
   assert.equal(status.stale, false);
+});
+
+test('mblogs 渲染沿用原版卡片榜', () => {
+  const { buildHtml, ANONYMOUS_CHARACTER_NAME } = require('../features/mabinogi/logs/renderMblogsList');
+  const html = buildHtml({
+    sections: [{
+      title: '枯木之佩塔克',
+      rows: [{
+        characterName: ANONYMOUS_CHARACTER_NAME,
+        characterClass: '黑魔导士',
+        rankingVisibility: 'anonymous',
+        serverId: 'yiluxia',
+        dps: 1_500_000,
+        duration: 90,
+        teamSize: 4,
+        damagePercent: 25,
+        totalDamage: 100_000_000,
+        bossHp: 698_000_000,
+        runId: 'abc12345'
+      }]
+    }]
+  });
+  assert.match(html, /枯木之佩塔克/);
+  assert.match(html, /神秘的米莱西安/);
+  assert.match(html, /@伊鲁夏/);
+  assert.match(html, /share-ring/);
+  assert.match(html, /DAMAGE \/ SEC/);
+  assert.match(html, /ZZZDisplay/);
 });

@@ -1,5 +1,3 @@
-const crypto = require('crypto');
-
 const SERVER_ALIASES = {
   ylx: 'ylx',
   伊鲁夏: 'ylx',
@@ -126,63 +124,7 @@ async function searchOptionsetWhere(db, params) {
   return { rows: rows.map((row) => ({ _id: String(row._id), Usage: row.Usage, level: row.level })) };
 }
 
-function anonymousName(id) {
-  const hash = crypto.createHash('sha256').update(String(id || '')).digest('hex').slice(0, 6);
-  return `匿名角色-${hash}`;
-}
-
-async function queryMblogs(db, params) {
-  const rank = boundedInt(params.rank, 10, 30);
-  const keyword = limitedString(params.keyword || '布里列赫', 80, 'mblogs 关键词');
-  const consentRows = await db.collection('cl_mabinogi_dps_ranking_consent')
-    .find(
-      { mode: { $in: ['anonymous', 'public'] }, playerId: /^45[0-9]{1,18}$/ },
-      { projection: { playerId: 1, playerName: 1, mode: 1 } }
-    )
-    .toArray();
-  const consentMap = new Map(consentRows.map((row) => [String(row.playerId), row]));
-  const characterIds = [...consentMap.keys()];
-  if (!characterIds.length) return { rows: [] };
-
-  const regex = new RegExp(escapeRegex(keyword), 'i');
-  const query = {
-    characterId: { $in: characterIds },
-    $or: [{ characterName: regex }, { dungeonName: regex }, { bossName: regex }]
-  };
-  if (params.job) query.characterClass = new RegExp(escapeRegex(limitedString(params.job, 40, '职业')), 'i');
-  let rows = await db.collection('cl_mabinogi_dps_records')
-    .find(query, {
-      projection: {
-        characterId: 1, characterName: 1, characterClass: 1, dungeonName: 1,
-        bossName: 1, bossKey: 1, bossGroup: 1, dps: 1, duration: 1,
-        teamSize: 1, recordTime: 1, totalDamage: 1, damagePercent: 1
-      }
-    })
-    .sort({ dps: -1 })
-    .limit(300)
-    .toArray();
-
-  if (!params.showAll) {
-    const best = new Map();
-    for (const row of rows) {
-      const key = `${row.characterId}:${row.bossGroup || row.bossKey || row.bossName}`;
-      if (!best.has(key)) best.set(key, row);
-    }
-    rows = [...best.values()];
-  }
-
-  rows = rows.slice(0, rank).map(({ _id, characterId, ...row }) => {
-    const consent = consentMap.get(String(characterId));
-    return {
-      ...row,
-      characterName: consent.mode === 'public' && consent.playerName
-        ? consent.playerName
-        : anonymousName(characterId),
-      rankingVisibility: consent.mode
-    };
-  });
-  return { keyword, rank, rows };
-}
+const { queryMblogs } = require('./mblogsQuery');
 
 async function querySmuggler(db) {
   const now = Date.now();
