@@ -13,7 +13,7 @@ const {
 } = require('../services/messageService');
 const { processBase64Image } = require('../utils/imageProcessor');
 const { executeInput } = require('../services/localCommandService');
-const { rememberGuild, getLogLabels } = require('../services/guildInfoService');
+const { rememberGuild, getLogLabels, resolveGuildMemberName } = require('../services/guildInfoService');
 const { uploadRichMedia } = require('../services/richMediaUpload');
 const { joinPublicUrl } = require('../utils/publicUrl');
 const logger = require('../utils/logger');
@@ -105,14 +105,14 @@ async function handleDirectMessage(eventData) {
     // 消息内容预处理
     const trimmedContent = content.trim();
     const labels = await getLogLabels(guild_id, userId);
-    void rememberGuild(guild_id, { author });
+    void rememberGuild(guild_id, { author, fetchProfile: false });
     logger.message({
       type: '频道私信',
       eventType: 'DIRECT_MESSAGE_CREATE',
       groupId: guild_id,
       groupName: labels.groupName,
       userId,
-      userName: labels.userName,
+      userName: labels.userName || resolveGuildMemberName(author),
       content: trimmedContent
     });
     // 获取本地消息分发所需的群组上下文

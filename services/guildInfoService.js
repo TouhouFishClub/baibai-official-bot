@@ -81,6 +81,24 @@ async function fetchGuildMemberFromQq(guildId, userId) {
   return data;
 }
 
+function isUnauthorizedGuild(code) {
+  return Number(code) === 11264;
+}
+
+function logGuildApiFailure(log, title, details) {
+  const payload = {
+    guildId: details.guildId,
+    userId: details.userId,
+    code: details.code,
+    reason: details.reason
+  };
+  if (isUnauthorizedGuild(details.code)) {
+    log.debug(title, payload);
+    return;
+  }
+  log.warn(title, payload);
+}
+
 function createGuildInfoService(options = {}) {
   const inFlight = new Map();
   const now = options.now || (() => new Date());
@@ -216,7 +234,11 @@ function createGuildInfoService(options = {}) {
             }
           }
         );
-        log.warn('获取频道资料失败', { guildId, code, message });
+        logGuildApiFailure(log, '获取频道资料失败', {
+          guildId,
+          code,
+          reason: message
+        });
         return existing;
       }
     });
@@ -276,7 +298,12 @@ function createGuildInfoService(options = {}) {
           },
           { upsert: true }
         );
-        log.warn('获取频道成员失败', { guildId, userId, code, message });
+        logGuildApiFailure(log, '获取频道成员失败', {
+          guildId,
+          userId,
+          code,
+          reason: message
+        });
         return existing;
       }
     });
@@ -311,6 +338,9 @@ function createGuildInfoService(options = {}) {
       if (userId) {
         await touchMemberFromEvent(id, extra.author, extra.member, seenAt);
       }
+      if (extra.fetchProfile === false) {
+        return collection.findOne({ _id: id });
+      }
       await Promise.all([
         refreshGuildIfNeeded(id, seenAt),
         userId ? refreshMemberIfNeeded(id, userId, seenAt) : Promise.resolve()
@@ -332,12 +362,13 @@ function createGuildInfoService(options = {}) {
 
 const defaultService = createGuildInfoService();
 
-function observeGuild(eventData = {}) {
+function observeGuild(eventData = {}, eventType = null) {
   const guildId = eventData.guild_id || null;
   if (!guildId) return;
   void defaultService.rememberGuild(guildId, {
     author: eventData.author,
-    member: eventData.member
+    member: eventData.member,
+    fetchProfile: eventType !== 'DIRECT_MESSAGE_CREATE'
   });
 }
 

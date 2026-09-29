@@ -55,7 +55,7 @@ async function handleDispatchEvent(payload, res) {
     });
 
     observeGroupOpenid(eventData);
-    observeGuild(eventData);
+    observeGuild(eventData, eventType);
     
     // 先发送回调确认，避免超时导致的重复推送
     // 返回HTTP回调确认，必须是op: 12的格式

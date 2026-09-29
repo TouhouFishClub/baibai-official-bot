@@ -160,3 +160,58 @@ test('未配置数据库时跳过频道拉取', async () => {
   assert.equal(await service.getStoredGuildName('guild-skip'), null);
   assert.equal(fetchCount, 0);
 });
+
+test('频道私信只缓存事件昵称，不请求 guild 接口', async () => {
+  const collection = createMemoryCollection();
+  const memberCollection = createMemoryCollection();
+  let guildFetch = 0;
+  let memberFetch = 0;
+  const service = createService({
+    collection,
+    memberCollection,
+    fetchGuild: async () => {
+      guildFetch += 1;
+      return { name: '不应请求' };
+    },
+    fetchGuildMember: async () => {
+      memberFetch += 1;
+      return { user: { id: 'u3', username: '不应请求' } };
+    }
+  });
+
+  await service.rememberGuild('dm-guild', {
+    author: { id: 'u3', username: '芙兰朵露·斯卡雷特' },
+    fetchProfile: false
+  });
+  assert.equal(guildFetch, 0);
+  assert.equal(memberFetch, 0);
+  assert.equal(await service.getStoredMemberName('dm-guild', 'u3'), '芙兰朵露·斯卡雷特');
+});
+
+test('频道未授权 11264 只记 debug 不记 warn', async () => {
+  const collection = createMemoryCollection();
+  const memberCollection = createMemoryCollection();
+  const logs = { debug: [], warn: [] };
+  const unauthorized = () => {
+    const error = new Error('频道未对机器人未授权');
+    error.response = { status: 403, data: { code: 11264, message: '频道未对机器人未授权' } };
+    throw error;
+  };
+  const service = createGuildInfoService({
+    isConfigured: () => true,
+    getCollection: async () => collection,
+    getMemberCollection: async () => memberCollection,
+    fetchGuild: unauthorized,
+    fetchGuildMember: unauthorized,
+    now: () => new Date('2026-09-30T00:00:00+08:00'),
+    logger: {
+      debug(message, data) { logs.debug.push({ message, data }); },
+      warn(message, data) { logs.warn.push({ message, data }); }
+    }
+  });
+
+  await service.rememberGuild('guild-unauth', { author: { id: 'u4', username: '事件昵称' } });
+  assert.equal(logs.warn.length, 0);
+  assert.equal(logs.debug.length, 2);
+  assert.equal(await service.getStoredMemberName('guild-unauth', 'u4'), '事件昵称');
+});
