@@ -46,3 +46,26 @@ test('群回复标识兼容 group_openid 和 group_id', () => {
   assert.equal(resolveGroupOpenid({ group_id: 'legacy-id' }), 'legacy-id');
   assert.equal(resolveGroupOpenid({}), null);
 });
+
+test('带 group_openid 的未知事件仍先回调确认', async () => {
+  const { handleDispatchEvent } = require('../events/eventDispatcher');
+  const { OP_CODE } = require('../utils/constants');
+  const res = {
+    body: null,
+    json(body) {
+      this.body = body;
+      return this;
+    },
+    status(code) {
+      this.statusCode = code;
+      return this;
+    }
+  };
+
+  await handleDispatchEvent({
+    t: 'UNKNOWN_GROUP_EVENT',
+    d: { group_openid: 'group-openid-1' }
+  }, res);
+
+  assert.equal(res.body.op, OP_CODE.HTTP_CALLBACK_ACK);
+});

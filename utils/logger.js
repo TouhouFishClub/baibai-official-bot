@@ -217,6 +217,15 @@ function dash(value) {
   return text || '-';
 }
 
+function formatSessionLabel(id, name) {
+  const trimmedId = dash(id);
+  const trimmedName = String(name || '').trim();
+  if (trimmedName && trimmedId !== '-') {
+    return `${trimmedName}(${trimmedId})`;
+  }
+  return trimmedId;
+}
+
 function describeReplyPayload(responseData) {
   if (!responseData || typeof responseData !== 'object') return '';
   if (responseData.type === 'image') {
@@ -229,16 +238,16 @@ function describeReplyPayload(responseData) {
   return String(responseData.message || '');
 }
 
-function formatTrafficLine({ type, eventType, groupId, userId, content }) {
-  return `[${dash(type)}][${dash(eventType)}][${dash(groupId)}][${dash(userId)}] ${singleLine(content, 300)}`;
+function formatTrafficLine({ type, eventType, groupId, groupName, userId, userName, content }) {
+  return `[${dash(type)}][${dash(eventType)}][${formatSessionLabel(groupId, groupName)}][${formatSessionLabel(userId, userName)}] ${singleLine(content, 300)}`;
 }
 
-function message({ type, eventType, groupId, userId, content } = {}) {
-  log('INFO', formatTrafficLine({ type, eventType, groupId, userId, content }));
+function message({ type, eventType, groupId, groupName, userId, userName, content } = {}) {
+  log('INFO', formatTrafficLine({ type, eventType, groupId, groupName, userId, userName, content }));
 }
 
-function reply({ type, groupId, userId, content, eventType = '发送' } = {}) {
-  log('INFO', formatTrafficLine({ type, eventType, groupId, userId, content }));
+function reply({ type, groupId, groupName, userId, userName, content, eventType = '发送' } = {}) {
+  log('INFO', formatTrafficLine({ type, eventType, groupId, groupName, userId, userName, content }));
 }
 
 module.exports = {
@@ -253,6 +262,8 @@ module.exports = {
   message,
   reply,
   describeReplyPayload,
+  formatSessionLabel,
+  formatTrafficLine,
   getErrorDetails,
   LOG_LEVELS,
   get currentLogLevel() {

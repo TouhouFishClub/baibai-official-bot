@@ -31,6 +31,7 @@
     "iconv-lite": "^0.7.3",
     "jsonwebtoken": "^9.0.2",
     "lodash": "^4.17.21",
+    "mongodb": "^6.21.0",
     "path-extra": "^4.2.1",
     "puppeteer": "^25.12.0",
     "sharp": "^0.35.5",

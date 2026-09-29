@@ -38,6 +38,36 @@ test('收发消息按通道、事件、会话和用户输出', () => {
   assert.match(normalLines[1], /\[频道私信\]\[发送\]\[guild-1\]\[u2\] \[图片\] MabiGC.png 附言/);
 });
 
+test('已有群名和成员名时日志带名称和 openid', () => {
+  const normalLines = [];
+  const originalLog = console.log;
+  console.log = (...args) => normalLines.push(args.join(' '));
+  const originalLevel = process.env.LOG_LEVEL;
+  process.env.LOG_LEVEL = 'info';
+
+  try {
+    logger.message({
+      type: '群',
+      eventType: 'GROUP_MESSAGE_CREATE',
+      groupId: '7C8467413F22B6981B448E41DC8F1B5D',
+      groupName: '群名称',
+      userId: '969942F23E62DF96C38CD1FA36566760',
+      userName: '成员名',
+      content: '暮光继承费用砍半了'
+    });
+  } finally {
+    console.log = originalLog;
+    if (originalLevel === undefined) delete process.env.LOG_LEVEL;
+    else process.env.LOG_LEVEL = originalLevel;
+  }
+
+  assert.equal(normalLines.length, 1);
+  assert.match(
+    normalLines[0],
+    /\[群\]\[GROUP_MESSAGE_CREATE\]\[群名称\(7C8467413F22B6981B448E41DC8F1B5D\)\]\[成员名\(969942F23E62DF96C38CD1FA36566760\)\] 暮光继承费用砍半了/
+  );
+});
+
 test('错误日志分流并压缩 Axios 错误对象', () => {
   const normalLines = [];
   const errorLines = [];

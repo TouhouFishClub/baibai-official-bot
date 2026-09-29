@@ -11,6 +11,7 @@ const {
 } = require('../services/messageService');
 const { processBase64Image } = require('../utils/imageProcessor');
 const { executeInput } = require('../services/localCommandService');
+const { rememberGroupOpenid, getStoredGroupName, getLogLabels } = require('../services/groupInfoService');
 const { uploadRichMedia } = require('../services/richMediaUpload');
 const { joinPublicUrl } = require('../utils/publicUrl');
 const logger = require('../utils/logger');
@@ -70,11 +71,15 @@ async function handleGroupAtMessage(eventData, eventType = null) {
     }
     
     const userId = author?.id || author?.member_openid || author?.user_openid;
+    const labels = await getLogLabels(replyGroupOpenid, userId);
+    void rememberGroupOpenid(replyGroupOpenid, { author });
     logger.message({
       type: '群',
       eventType: eventType || 'GROUP_AT_MESSAGE_CREATE',
       groupId: replyGroupOpenid,
+      groupName: labels.groupName,
       userId,
+      userName: labels.userName,
       content: trimmedContent
     });
 
@@ -103,10 +108,13 @@ async function handleGroupAtMessage(eventData, eventType = null) {
  */
 async function sendReplyToGroup(responseData, groupOpenid, messageId, userId = null) {
   try {
+    const labels = await getLogLabels(groupOpenid, userId);
     logger.reply({
       type: '群',
       groupId: groupOpenid,
+      groupName: labels.groupName,
       userId,
+      userName: labels.userName,
       content: logger.describeReplyPayload(responseData)
     });
 
@@ -228,11 +236,12 @@ function getMappedGroupId(groupId) {
  */
 async function processLocalMessage(input, userId, groupId) {
   const mappedGroupId = getMappedGroupId(groupId);
+  const storedName = await getStoredGroupName(groupId);
   return executeInput(input, {
     userId,
     userName: `QQ-${userId}`,
     groupId: mappedGroupId || groupId || 'global',
-    groupName: `QQ群-${mappedGroupId || groupId || 'global'}`,
+    groupName: storedName || `QQ群-${mappedGroupId || groupId || 'global'}`,
     sourceGroupId: groupId
   });
 }

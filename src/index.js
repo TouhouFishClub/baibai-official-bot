@@ -22,6 +22,7 @@ const openApiRoutes = require('../routes/openApiRoutes');
 
 // 引入自动推送服务
 const autoPushService = require('../services/autoPushService');
+const { connectMongoIfConfigured, getMongoConfig } = require('../services/mongo');
 const logger = require('../utils/logger');
 
 // 初始化Express应用
@@ -152,6 +153,17 @@ async function startServer(port = PORT) {
   }
   if (!process.env.ADMIN_PASSWORD) {
     logger.warn('未配置 ADMIN_PASSWORD，管理端登录不可用');
+  }
+
+  try {
+    const mongoReady = await connectMongoIfConfigured();
+    if (mongoReady) {
+      logger.service(`MongoDB 已连接: ${getMongoConfig().database}`);
+    } else {
+      logger.warn('未配置 MONGODB_URI，群资料不会入库');
+    }
+  } catch (error) {
+    logger.warn('MongoDB 连接失败，群资料缓存不可用', error.message);
   }
 
   // 初始化自动推送服务
