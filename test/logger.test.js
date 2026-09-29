@@ -98,6 +98,35 @@ test('已有频道名和成员名时日志带名称和 id', () => {
   );
 });
 
+test('私聊日志带昵称和 openid', () => {
+  const normalLines = [];
+  const originalLog = console.log;
+  console.log = (...args) => normalLines.push(args.join(' '));
+  const originalLevel = process.env.LOG_LEVEL;
+  process.env.LOG_LEVEL = 'info';
+
+  try {
+    logger.message({
+      type: '私聊',
+      eventType: 'C2C_MESSAGE_CREATE',
+      groupId: '-',
+      userId: 'F4AAE1C41F7D506F25F70BF1473DB1A8',
+      userName: '芙兰朵露·斯卡雷特',
+      content: '1+1'
+    });
+  } finally {
+    console.log = originalLog;
+    if (originalLevel === undefined) delete process.env.LOG_LEVEL;
+    else process.env.LOG_LEVEL = originalLevel;
+  }
+
+  assert.equal(normalLines.length, 1);
+  assert.match(
+    normalLines[0],
+    /\[私聊\]\[C2C_MESSAGE_CREATE\]\[-\]\[芙兰朵露·斯卡雷特\(F4AAE1C41F7D506F25F70BF1473DB1A8\)\] 1\+1/
+  );
+});
+
 test('错误日志分流并压缩 Axios 错误对象', () => {
   const normalLines = [];
   const errorLines = [];

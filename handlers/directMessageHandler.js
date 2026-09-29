@@ -13,7 +13,16 @@ const {
 } = require('../services/messageService');
 const { processBase64Image } = require('../utils/imageProcessor');
 const { executeInput } = require('../services/localCommandService');
-const { rememberGuild, getLogLabels, resolveGuildMemberName } = require('../services/guildInfoService');
+const {
+  rememberGuild,
+  getLogLabels: getGuildLogLabels,
+  resolveGuildMemberName
+} = require('../services/guildInfoService');
+const {
+  rememberUser,
+  getLogLabels: getUserLogLabels,
+  resolveUserName
+} = require('../services/userInfoService');
 const { uploadRichMedia } = require('../services/richMediaUpload');
 const { joinPublicUrl } = require('../utils/publicUrl');
 const logger = require('../utils/logger');
@@ -38,7 +47,7 @@ function getChannelConfig() {
 async function handleC2CMessage(eventData) {
   try {
     const { content, author, id: messageId } = eventData;
-    const userId = author.user_openid || author.union_openid;
+    const userId = author.user_openid || author.union_openid || author.id;
     
     // 检查是否有文本内容
     if (!content) {
@@ -48,11 +57,15 @@ async function handleC2CMessage(eventData) {
     
     // 消息内容预处理
     const trimmedContent = content.trim();
+    const labels = await getUserLogLabels(userId);
+    void rememberUser(author, { eventData, source: 'c2c' });
+    const userName = labels.userName || resolveUserName(author, eventData);
     logger.message({
       type: '私聊',
       eventType: 'C2C_MESSAGE_CREATE',
       groupId: '-',
       userId,
+      userName,
       content: trimmedContent
     });
     
@@ -62,11 +75,11 @@ async function handleC2CMessage(eventData) {
     
     // 在当前进程中处理消息
     try {
-      const result = await processLocalMessage(trimmedContent, userId, groupId);
+      const result = await processLocalMessage(trimmedContent, userId, groupId, userName);
       
       // 发送回复 - 使用原始消息ID作为被动消息
       if (result && result.status === "ok" && result.data) {
-        await sendReplyToC2C(result.data, userId, messageId);
+        await sendReplyToC2C(result.data, userId, messageId, userName);
       }
       // 如果没有返回结果，静默处理，不发送回复
     } catch (apiError) {
@@ -75,6 +88,7 @@ async function handleC2CMessage(eventData) {
         type: '私聊',
         groupId: '-',
         userId,
+        userName,
         content: '处理请求时发生错误，请稍后再试'
       });
       await sendFilteredTextToC2C(userId, '处理请求时发生错误，请稍后再试', null, messageId);
@@ -104,8 +118,9 @@ async function handleDirectMessage(eventData) {
     
     // 消息内容预处理
     const trimmedContent = content.trim();
-    const labels = await getLogLabels(guild_id, userId);
+    const labels = await getGuildLogLabels(guild_id, userId);
     void rememberGuild(guild_id, { author, fetchProfile: false });
+    void rememberUser(author, { eventData, source: 'direct', guildId: guild_id });
     logger.message({
       type: '频道私信',
       eventType: 'DIRECT_MESSAGE_CREATE',
@@ -196,12 +211,14 @@ async function sendFilteredTextToC2C(userOpenid, message, eventId = null, msgId 
  * @param {string} userOpenid - 用户openid
  * @param {string} messageId - 用户消息ID
  */
-async function sendReplyToC2C(responseData, userOpenid, messageId) {
+async function sendReplyToC2C(responseData, userOpenid, messageId, userName = null) {
   try {
+    const labels = await getUserLogLabels(userOpenid);
     logger.reply({
       type: '私聊',
       groupId: '-',
       userId: userOpenid,
+      userName: labels.userName || userName,
       content: logger.describeReplyPayload(responseData)
     });
 
@@ -274,7 +291,7 @@ async function sendReplyToC2C(responseData, userOpenid, messageId) {
  */
 async function sendReplyToDirectMessage(responseData, guildId, messageId, userId = null) {
   try {
-    const labels = await getLogLabels(guildId, userId);
+    const labels = await getGuildLogLabels(guildId, userId);
     logger.reply({
       type: '频道私信',
       groupId: guildId,
