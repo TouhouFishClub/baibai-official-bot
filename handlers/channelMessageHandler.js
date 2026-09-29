@@ -6,9 +6,8 @@
 const fs = require('fs');
 const path = require('path');
 const { sendTextToChannel, sendImageToChannel } = require('../services/messageService');
-const { processBase64Image, getImageInfo } = require('../utils/imageProcessor');
+const { processBase64Image } = require('../utils/imageProcessor');
 const { executeInput } = require('../services/localCommandService');
-const { joinPublicUrl } = require('../utils/publicUrl');
 const logger = require('../utils/logger');
 
 /**
@@ -88,16 +87,13 @@ async function sendReplyToChannel(responseData, channelId, messageId) {
         return;
       }
       
-      const imageUrl = joinPublicUrl(`temp_images/${encodeURIComponent(fileName)}`);
-      logger.info('频道使用公网 image URL', { imageUrl, fileName });
-      
+      logger.info('频道使用本地 file_image 上传', { fileName });
+
       if (responseData.message) {
         const convertedMessage = convertCQCodeToQQFormat(responseData.message);
-        // 频道接口可在同一个消息体中同时携带 content 和 image。
-        await sendImageToChannel(channelId, imageUrl, convertedMessage, null, messageId);
+        await sendImageToChannel(channelId, null, convertedMessage, null, messageId, imagePath);
       } else {
-        // 只发送图片
-        await sendImageToChannel(channelId, imageUrl, '', null, messageId);
+        await sendImageToChannel(channelId, null, '', null, messageId, imagePath);
       }
       
     } else if (responseData.type === "text" && responseData.message) {
@@ -111,7 +107,7 @@ async function sendReplyToChannel(responseData, channelId, messageId) {
   }
 }
 
-// 注意：频道API不需要先上传文件获取file_info，直接使用图片URL即可
+// 频道接口用 multipart file_image 本地上传，避免 QQ 拉公网 URL 返回 304017。
 
 /**
  * 将CQ码格式转换为QQ机器人API格式

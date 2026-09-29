@@ -8,6 +8,7 @@ const path = require('path');
 const {
   sendTextToC2C,
   sendTextToDirectMessage,
+  sendImageToDirectMessage,
   sendC2CMessage
 } = require('../services/messageService');
 const { processBase64Image, getImageInfo } = require('../utils/imageProcessor');
@@ -248,7 +249,7 @@ async function sendReplyToC2C(responseData, userOpenid, messageId) {
 async function sendReplyToDirectMessage(responseData, guildId, messageId) {
   try {
     if (responseData.type === "image" && responseData.base64 && responseData.path) {
-      // 处理图片消息 - 频道私信直接使用图片URL，类似频道
+      // 处理图片消息 - 频道私信走本地 file_image 上传
       // 创建临时图片目录
       const tempImageDir = path.join(__dirname, '../public/temp_images');
       if (!fs.existsSync(tempImageDir)) {
@@ -276,16 +277,13 @@ async function sendReplyToDirectMessage(responseData, guildId, messageId) {
         console.log(`频道私信最终图片信息: ${imageInfo.width}x${imageInfo.height}, ${imageInfo.format}, ${imageInfo.sizeMB}MB`);
       }
       
-      const imageUrl = joinPublicUrl(`temp_images/${encodeURIComponent(fileName)}`);
-      logger.info('频道私信使用公网 image URL', { imageUrl });
-      
-      // 频道私信使用类似频道的方式发送图片
+      logger.info('频道私信使用本地 file_image 上传', { fileName });
+
       if (responseData.message) {
         const filteredMessage = filterCQAtCodes(responseData.message);
-        await sendImageToDirectMessage(guildId, imageUrl, filteredMessage, null, messageId);
+        await sendImageToDirectMessage(guildId, null, filteredMessage, null, messageId, imagePath);
       } else {
-        // 只发送图片
-        await sendImageToDirectMessage(guildId, imageUrl, '', null, messageId);
+        await sendImageToDirectMessage(guildId, null, '', null, messageId, imagePath);
       }
       
     } else if (responseData.type === "text" && responseData.message) {
@@ -319,30 +317,6 @@ async function uploadFileForC2C(userOpenid, url, fileType, filePath) {
     logger.error('上传QQ私信文件失败', error);
     throw error;
   }
-}
-
-/**
- * 发送图片消息到频道私信
- * @param {string} guildId - 频道服务器ID
- * @param {string} imageUrl - 图片URL
- * @param {string} [content] - 可选的文本内容
- * @param {string} [eventId] - 前置事件ID (可选)
- * @param {string} [msgId] - 前置消息ID (可选)
- * @returns {Promise<object>} 发送结果
- */
-async function sendImageToDirectMessage(guildId, imageUrl, content = '', eventId = null, msgId = null) {
-  const { sendDirectMessage } = require('../services/messageService');
-  
-  const messageData = {
-    image: imageUrl // 频道私信API使用image字段直接传URL，类似频道
-  };
-  
-  // 如果有文本内容，添加到消息中
-  if (content && content.trim()) {
-    messageData.content = content;
-  }
-  
-  return sendDirectMessage(guildId, messageData, eventId, msgId);
 }
 
 module.exports = {

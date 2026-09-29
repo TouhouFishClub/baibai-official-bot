@@ -5,6 +5,7 @@
 
 const dns = require('dns');
 const fs = require('fs');
+const path = require('path');
 const https = require('https');
 const axios = require('axios');
 const logger = require('../utils/logger');
@@ -108,6 +109,15 @@ async function qqRequest(method, url, data, headers = {}) {
     axiosConfig.maxContentLength = Infinity;
     axiosConfig.transformRequest = [(body) => body];
   }
+  if (isFormDataPayload(data)) {
+    axiosConfig.maxBodyLength = Infinity;
+    axiosConfig.maxContentLength = Infinity;
+    delete axiosConfig.headers['Content-Type'];
+    delete axiosConfig.headers['content-type'];
+    if (typeof data.getHeaders === 'function') {
+      Object.assign(axiosConfig.headers, data.getHeaders());
+    }
+  }
   if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
     axiosConfig.signal = AbortSignal.timeout(QQ_API_TIMEOUT_MS);
   }
@@ -128,6 +138,58 @@ function logRequestError(message, error) {
   if (error && typeof error === 'object') {
     error.alreadyLogged = true;
   }
+}
+
+function isFormDataPayload(data) {
+  return (typeof FormData !== 'undefined' && data instanceof FormData)
+    || (Boolean(data) && typeof data.append === 'function' && typeof data.getHeaders === 'function');
+}
+
+function mimeForImage(filePath) {
+  const ext = path.extname(String(filePath || '')).toLowerCase();
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.gif') return 'image/gif';
+  if (ext === '.webp') return 'image/webp';
+  return 'image/png';
+}
+
+function createChannelImageForm({ filePath, content = '', eventId = null, msgId = null } = {}) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    throw new Error('缺少本地图片文件');
+  }
+
+  const buffer = fs.readFileSync(filePath);
+  const fileName = path.basename(filePath);
+  const form = new FormData();
+  const type = mimeForImage(filePath);
+  if (typeof File === 'function') {
+    form.append('file_image', new File([buffer], fileName, { type }));
+  } else {
+    form.append('file_image', new Blob([buffer], { type }), fileName);
+  }
+  if (content && String(content).trim()) {
+    form.append('content', String(content));
+  }
+  if (eventId) form.append('event_id', String(eventId));
+  if (msgId) form.append('msg_id', String(msgId));
+  return form;
+}
+
+function prepareGuildMessage(messageData, eventId, msgId) {
+  if (isFormDataPayload(messageData)) {
+    if (eventId && !messageData.has('event_id')) {
+      messageData.append('event_id', String(eventId));
+    }
+    if (msgId && !messageData.has('msg_id')) {
+      messageData.append('msg_id', String(msgId));
+    }
+    return { data: messageData, json: false };
+  }
+
+  const requestData = { ...messageData };
+  if (eventId) requestData.event_id = eventId;
+  if (msgId) requestData.msg_id = msgId;
+  return { data: requestData, json: true };
 }
 
 function validateTypedMessage(message) {
@@ -344,25 +406,26 @@ async function sendChannelMessage(channelId, messageData, eventId = null, msgId 
     
     // 获取动态AccessToken - 根据官方文档要求
     const accessToken = await getAccessToken();
-    
-    // 构建请求数据
-    const requestData = { ...messageData };
-    
-    // 添加被动消息字段
-    if (eventId) requestData.event_id = eventId;
-    if (msgId) requestData.msg_id = msgId;
-    
-    logger.debug('发送频道消息', { channelId, contentLength: requestData.content?.length || 0 });
-    
+    const { data: requestData, json } = prepareGuildMessage(messageData, eventId, msgId);
+    const contentLength = json
+      ? (requestData.content?.length || 0)
+      : String(requestData.get?.('content') || '').length;
+
+    logger.debug('发送频道消息', { channelId, contentLength, multipart: !json });
+
+    const headers = {
+      Authorization: `QQBot ${accessToken}`
+    };
+    if (json) {
+      headers['Content-Type'] = 'application/json';
+    }
+
     // 发送消息请求 - 根据官方文档，频道消息也使用QQBot认证格式
     const response = await qqRequest(
       'POST',
       `${QQ_API_ROOT}/channels/${channelId}/messages`,
       requestData,
-      {
-        'Content-Type': 'application/json',
-        'Authorization': `QQBot ${accessToken}`
-      }
+      headers
     );
     
     logger.info('频道消息发送成功');
@@ -414,24 +477,36 @@ async function sendMarkdownToChannel(channelId, markdown, eventId = null, msgId 
 
 /**
  * 发送图片消息到频道
+ * 优先 multipart file_image 本地上传；QQ 拉公网 image URL 常返回 304017。
  * @param {string} channelId - 频道ID
- * @param {string} imageUrl - 图片URL
+ * @param {string} [imageUrl] - 图片URL（无本地文件时的回退）
  * @param {string} [content] - 可选的文本内容
  * @param {string} [eventId] - 前置事件ID (可选)
  * @param {string} [msgId] - 前置消息ID (可选)
+ * @param {string} [filePath] - 本地图片路径
  * @returns {Promise<object>} 发送结果
  */
-async function sendImageToChannel(channelId, imageUrl, content = '', eventId = null, msgId = null) {
+async function sendImageToChannel(channelId, imageUrl, content = '', eventId = null, msgId = null, filePath = null) {
+  if (filePath) {
+    logger.info('频道使用本地 file_image 上传', { fileName: path.basename(filePath) });
+    return sendChannelMessage(
+      channelId,
+      createChannelImageForm({ filePath, content }),
+      eventId,
+      msgId
+    );
+  }
+  if (!imageUrl) {
+    throw new Error('缺少图片文件或图片URL');
+  }
+
+  logger.info('频道回退公网 image URL', { imageUrl });
   const messageData = {
-    // 频道不走群聊 file_info，平台按 image URL 自行转存。
     image: imageUrl
   };
-  
-  // 如果有文本内容，添加到消息中
   if (content && content.trim()) {
     messageData.content = content;
   }
-  
   return sendChannelMessage(channelId, messageData, eventId, msgId);
 }
 
@@ -539,25 +614,26 @@ async function sendDirectMessage(guildId, messageData, eventId = null, msgId = n
     
     // 获取动态AccessToken
     const accessToken = await getAccessToken();
-    
-    // 构建请求数据
-    const requestData = { ...messageData };
-    
-    // 添加被动消息字段
-    if (eventId) requestData.event_id = eventId;
-    if (msgId) requestData.msg_id = msgId;
-    
-    logger.debug('发送频道私信消息', { guildId, contentLength: requestData.content?.length || 0 });
-    
+    const { data: requestData, json } = prepareGuildMessage(messageData, eventId, msgId);
+    const contentLength = json
+      ? (requestData.content?.length || 0)
+      : String(requestData.get?.('content') || '').length;
+
+    logger.debug('发送频道私信消息', { guildId, contentLength, multipart: !json });
+
+    const headers = {
+      Authorization: `QQBot ${accessToken}`
+    };
+    if (json) {
+      headers['Content-Type'] = 'application/json';
+    }
+
     // 发送消息请求 - 根据官方文档使用/dms/{guild_id}/messages
     const response = await qqRequest(
       'POST',
       `${QQ_API_ROOT}/dms/${guildId}/messages`,
       requestData,
-      {
-        'Content-Type': 'application/json',
-        'Authorization': `QQBot ${accessToken}`
-      }
+      headers
     );
     
     logger.info('频道私信消息发送成功');
@@ -588,6 +664,34 @@ async function sendTextToDirectMessage(guildId, content, eventId = null, msgId =
   );
 }
 
+/**
+ * 发送图片消息到频道私信
+ * 优先 multipart file_image 本地上传，避免 QQ 拉公网 URL 失败。
+ */
+async function sendImageToDirectMessage(guildId, imageUrl, content = '', eventId = null, msgId = null, filePath = null) {
+  if (filePath) {
+    logger.info('频道私信使用本地 file_image 上传', { fileName: path.basename(filePath) });
+    return sendDirectMessage(
+      guildId,
+      createChannelImageForm({ filePath, content }),
+      eventId,
+      msgId
+    );
+  }
+  if (!imageUrl) {
+    throw new Error('缺少图片文件或图片URL');
+  }
+
+  logger.info('频道私信回退公网 image URL', { imageUrl });
+  const messageData = {
+    image: imageUrl
+  };
+  if (content && content.trim()) {
+    messageData.content = content;
+  }
+  return sendDirectMessage(guildId, messageData, eventId, msgId);
+}
+
 module.exports = {
   sendGroupMessage,
   sendTextToGroup,
@@ -602,6 +706,10 @@ module.exports = {
   sendTextToC2C,
   sendDirectMessage,
   sendTextToDirectMessage,
+  sendImageToDirectMessage,
+  createChannelImageForm,
+  isFormDataPayload,
+  prepareGuildMessage,
   getAccessToken,
   QQ_API_ROOT,
   QQ_API_TIMEOUT_MS,
