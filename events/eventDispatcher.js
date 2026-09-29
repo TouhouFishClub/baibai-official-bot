@@ -46,10 +46,10 @@ async function handleDispatchEvent(payload, res) {
     const eventType = payload.t;
     const eventData = payload.d;
     
-    logger.info(`收到事件: ${eventType}`, { 
+    logger.debug(`收到事件: ${eventType}`, {
       groupId: eventData.group_openid || eventData.group_id,
-      channelId: eventData.channel_id, 
-      userId: eventData.author?.id 
+      channelId: eventData.channel_id,
+      userId: eventData.author?.id
     });
     
     // 先发送回调确认，避免超时导致的重复推送

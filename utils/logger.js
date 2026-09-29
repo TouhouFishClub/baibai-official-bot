@@ -11,8 +11,9 @@ const LOG_LEVELS = {
   DEBUG: 3
 };
 
-// 当前日志级别（从环境变量读取，默认为INFO）
-const currentLogLevel = LOG_LEVELS[process.env.LOG_LEVEL?.toUpperCase()] ?? LOG_LEVELS.INFO;
+function resolveLogLevel() {
+  return LOG_LEVELS[String(process.env.LOG_LEVEL || 'info').toUpperCase()] ?? LOG_LEVELS.INFO;
+}
 const MAX_DETAIL_LENGTH = 2000;
 const SENSITIVE_KEY_PATTERN = /authorization|cookie|token|secret|password|signature/i;
 
@@ -122,17 +123,16 @@ function formatDetails(data) {
  */
 function log(level, message, data = null) {
   const levelValue = LOG_LEVELS[level.toUpperCase()];
-  if (levelValue > currentLogLevel) {
+  if (levelValue > resolveLogLevel()) {
     return; // 跳过低优先级日志
   }
 
   const timestamp = getTimestamp();
   const prefix = `[${timestamp}] ${level.toUpperCase()}:`;
-  
-  if (data) {
-    console.log(prefix, message, data);
+  if (data !== null && data !== undefined) {
+    console.log(`${prefix} ${singleLine(message)} ${formatDetails(data)}`);
   } else {
-    console.log(prefix, message);
+    console.log(`${prefix} ${singleLine(message)}`);
   }
 }
 
@@ -140,7 +140,7 @@ function log(level, message, data = null) {
  * 错误日志
  */
 function error(message, data = null) {
-  if (LOG_LEVELS.ERROR > currentLogLevel) return;
+  if (LOG_LEVELS.ERROR > resolveLogLevel()) return;
 
   const timestamp = getTimestamp();
   const safeMessage = singleLine(message || '未命名错误');
@@ -185,12 +185,8 @@ function service(message, data = null) {
  * API请求日志（简化版）
  */
 function api(method, endpoint, status = null) {
-  const timestamp = getTimestamp();
-  if (status) {
-    console.log(`[${timestamp}] API: ${method} ${endpoint} -> ${status}`);
-  } else {
-    console.log(`[${timestamp}] API: ${method} ${endpoint}`);
-  }
+  const line = status ? `${method} ${endpoint} -> ${status}` : `${method} ${endpoint}`;
+  debug(`API ${line}`);
 }
 
 /**
@@ -247,6 +243,8 @@ module.exports = {
   reply,
   getErrorDetails,
   LOG_LEVELS,
-  currentLogLevel
+  get currentLogLevel() {
+    return resolveLogLevel();
+  }
 };
 

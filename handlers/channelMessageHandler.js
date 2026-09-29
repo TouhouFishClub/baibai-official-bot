@@ -87,8 +87,6 @@ async function sendReplyToChannel(responseData, channelId, messageId) {
         return;
       }
       
-      logger.info('频道使用本地 file_image 上传', { fileName });
-
       if (responseData.message) {
         const convertedMessage = convertCQCodeToQQFormat(responseData.message);
         await sendImageToChannel(channelId, null, convertedMessage, null, messageId, imagePath);

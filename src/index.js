@@ -1,4 +1,7 @@
-require('dotenv').config();
+const dotenvResult = require('dotenv').config();
+if (dotenvResult.parsed?.LOG_LEVEL) {
+  process.env.LOG_LEVEL = dotenvResult.parsed.LOG_LEVEL;
+}
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -140,6 +143,7 @@ async function startServer(port = PORT) {
   const listeningPort = server.address().port;
   logger.service(`服务器运行在 http://localhost:${listeningPort}`);
   logger.service(`环境: ${config.server.environment}`);
+  logger.service(`日志级别: ${process.env.LOG_LEVEL || 'info'}`);
   logger.service(`机器人名称: ${process.env.QQ_BOT_NAME}`);
   logger.service(`QQ Webhook 路径: http://localhost:${listeningPort}/qq/webhook`);
 

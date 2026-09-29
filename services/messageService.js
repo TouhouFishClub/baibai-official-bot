@@ -306,7 +306,7 @@ async function sendGroupMessage(groupOpenid, message, eventId = null, msgId = nu
       }
     );
     
-    logger.info('群聊消息发送成功');
+    logger.debug('群聊消息发送成功');
     return response.data;
     
   } catch (error) {
@@ -428,7 +428,7 @@ async function sendChannelMessage(channelId, messageData, eventId = null, msgId 
       headers
     );
     
-    logger.info('频道消息发送成功');
+    logger.debug('频道消息发送成功');
     return response.data;
     
   } catch (error) {
@@ -488,7 +488,7 @@ async function sendMarkdownToChannel(channelId, markdown, eventId = null, msgId 
  */
 async function sendImageToChannel(channelId, imageUrl, content = '', eventId = null, msgId = null, filePath = null) {
   if (filePath) {
-    logger.info('频道使用本地 file_image 上传', { fileName: path.basename(filePath) });
+    logger.debug('频道使用本地 file_image 上传', { fileName: path.basename(filePath) });
     return sendChannelMessage(
       channelId,
       createChannelImageForm({ filePath, content }),
@@ -500,7 +500,7 @@ async function sendImageToChannel(channelId, imageUrl, content = '', eventId = n
     throw new Error('缺少图片文件或图片URL');
   }
 
-  logger.info('频道回退公网 image URL', { imageUrl });
+  logger.warn('频道回退公网 image URL', { imageUrl });
   const messageData = {
     image: imageUrl
   };
@@ -568,7 +568,7 @@ async function sendC2CMessage(userOpenid, message, eventId = null, msgId = null,
       }
     );
     
-    logger.info('QQ单聊消息发送成功');
+    logger.debug('QQ单聊消息发送成功');
     return response.data;
     
   } catch (error) {
@@ -636,7 +636,7 @@ async function sendDirectMessage(guildId, messageData, eventId = null, msgId = n
       headers
     );
     
-    logger.info('频道私信消息发送成功');
+    logger.debug('频道私信消息发送成功');
     return response.data;
     
   } catch (error) {
@@ -670,7 +670,7 @@ async function sendTextToDirectMessage(guildId, content, eventId = null, msgId =
  */
 async function sendImageToDirectMessage(guildId, imageUrl, content = '', eventId = null, msgId = null, filePath = null) {
   if (filePath) {
-    logger.info('频道私信使用本地 file_image 上传', { fileName: path.basename(filePath) });
+    logger.debug('频道私信使用本地 file_image 上传', { fileName: path.basename(filePath) });
     return sendDirectMessage(
       guildId,
       createChannelImageForm({ filePath, content }),
@@ -682,7 +682,7 @@ async function sendImageToDirectMessage(guildId, imageUrl, content = '', eventId
     throw new Error('缺少图片文件或图片URL');
   }
 
-  logger.info('频道私信回退公网 image URL', { imageUrl });
+  logger.warn('频道私信回退公网 image URL', { imageUrl });
   const messageData = {
     image: imageUrl
   };

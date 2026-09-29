@@ -12,7 +12,8 @@ module.exports = {
       out_file: path.join(__dirname, 'logs', 'baibai-official-bot-out.log'),
       error_file: path.join(__dirname, 'logs', 'baibai-official-bot-error.log'),
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        LOG_LEVEL: 'info'
       }
     }
   ]

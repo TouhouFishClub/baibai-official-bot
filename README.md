@@ -75,7 +75,7 @@ DATABASE_BRIDGE_SECRET=<相同的Base64密钥>
 DATABASE_BRIDGE_TIMEOUT_MS=10000
 ```
 
-老服务器部署和反向代理要求见 [`legacy-data-bridge/README.md`](legacy-data-bridge/README.md)。桥接仅恢复查询能力，不接管 mabiPusher、DPS 上传和走私采集。
+老服务器部署和反向代理要求见 [`legacy-data-bridge/README.md`](legacy-data-bridge/README.md)。桥接只提供只读查询；电视/走私采集和 DPS 上传仍由旧系统负责，本服务不接入 mabiPusher。
 
 ## 开发验证
 
@@ -88,7 +88,7 @@ npm test
 
 ## PM2 日志
 
-使用仓库内配置启动后，普通日志和错误详情会分别写入 `logs/baibai-official-bot-out.log` 与 `logs/baibai-official-bot-error.log`：
+使用仓库内配置启动后，普通日志和错误详情会分别写入 `logs/baibai-official-bot-out.log` 与 `logs/baibai-official-bot-error.log`。生产默认 `LOG_LEVEL=info`（`ecosystem.config.js`），只保留收到消息、命令、警告和错误；排查时把该值改成 `debug` 后重启。
 
 ```bash
 pm2 start ecosystem.config.js

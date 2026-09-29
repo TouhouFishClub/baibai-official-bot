@@ -184,7 +184,7 @@ async function uploadRichMedia(apiPath, { fileType, filePath, url, fileName } = 
         fileName: resolvedName
       });
       const fileInfo = await attempt.run();
-      logger.info('文件上传成功', { method: attempt.label });
+      logger.debug('文件上传成功', { method: attempt.label });
       return fileInfo;
     } catch (error) {
       lastError = error;

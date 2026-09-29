@@ -11,7 +11,7 @@ const {
   sendImageToDirectMessage,
   sendC2CMessage
 } = require('../services/messageService');
-const { processBase64Image, getImageInfo } = require('../utils/imageProcessor');
+const { processBase64Image } = require('../utils/imageProcessor');
 const { executeInput } = require('../services/localCommandService');
 const { uploadRichMedia } = require('../services/richMediaUpload');
 const { joinPublicUrl } = require('../utils/publicUrl');
@@ -88,7 +88,7 @@ async function handleDirectMessage(eventData) {
     
     // 检查是否有文本内容
     if (!content) {
-      console.log('收到无文本内容的频道私信消息，忽略处理');
+      logger.debug('收到无文本内容的频道私信消息，忽略处理');
       return;
     }
     
@@ -191,17 +191,9 @@ async function sendReplyToC2C(responseData, userOpenid, messageId) {
         logger.error('QQ私信图片处理失败，跳过发送');
         return;
       }
-      
-      console.log(`QQ私信图片处理完成: ${imagePath}`);
-      
-      // 显示图片信息
-      const imageInfo = await getImageInfo(imagePath);
-      if (imageInfo) {
-        console.log(`QQ私信最终图片信息: ${imageInfo.width}x${imageInfo.height}, ${imageInfo.format}, ${imageInfo.sizeMB}MB`);
-      }
-      
+
       const imageUrl = joinPublicUrl(`temp_images/${encodeURIComponent(fileName)}`);
-      logger.info('QQ私信图片先分片上传再发送', { fileName });
+      logger.debug('QQ私信图片先分片上传再发送', { fileName });
 
       const fileInfo = await uploadFileForC2C(userOpenid, imageUrl, 1, imagePath);
       
@@ -268,16 +260,6 @@ async function sendReplyToDirectMessage(responseData, guildId, messageId) {
         logger.error('频道私信图片处理失败，跳过发送');
         return;
       }
-      
-      console.log(`频道私信图片处理完成: ${imagePath}`);
-      
-      // 显示图片信息
-      const imageInfo = await getImageInfo(imagePath);
-      if (imageInfo) {
-        console.log(`频道私信最终图片信息: ${imageInfo.width}x${imageInfo.height}, ${imageInfo.format}, ${imageInfo.sizeMB}MB`);
-      }
-      
-      logger.info('频道私信使用本地 file_image 上传', { fileName });
 
       if (responseData.message) {
         const filteredMessage = filterCQAtCodes(responseData.message);

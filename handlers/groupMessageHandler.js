@@ -9,7 +9,7 @@ const {
   sendTextToGroup,
   sendMediaToGroup
 } = require('../services/messageService');
-const { processBase64Image, getImageInfo } = require('../utils/imageProcessor');
+const { processBase64Image } = require('../utils/imageProcessor');
 const { executeInput } = require('../services/localCommandService');
 const { uploadRichMedia } = require('../services/richMediaUpload');
 const { joinPublicUrl } = require('../utils/publicUrl');
@@ -126,15 +126,9 @@ async function sendReplyToGroup(responseData, groupOpenid, messageId) {
         logger.error('图片处理失败，跳过发送');
         return;
       }
-      
-      // 显示图片信息
-      const imageInfo = await getImageInfo(imagePath);
-      if (imageInfo) {
-        logger.info(`图片处理完成: ${imageInfo.width}x${imageInfo.height}, ${imageInfo.format}, ${imageInfo.sizeMB}MB`);
-      }
-      
+
       const imageUrl = joinPublicUrl(`temp_images/${encodeURIComponent(fileName)}`);
-      logger.info('群聊图片先分片上传再发送', { fileName });
+      logger.debug('群聊图片先分片上传再发送', { fileName });
 
       const fileInfo = await uploadFileForGroup(groupOpenid, imageUrl, 1, imagePath);
       
