@@ -21,7 +21,8 @@ const {
 const {
   rememberUser,
   getLogLabels: getUserLogLabels,
-  resolveUserName
+  resolveUserName,
+  resolveUserOpenid
 } = require('../services/userInfoService');
 const { uploadRichMedia } = require('../services/richMediaUpload');
 const { joinPublicUrl } = require('../utils/publicUrl');
@@ -57,7 +58,7 @@ async function handleC2CMessage(eventData) {
     
     // 消息内容预处理
     const trimmedContent = content.trim();
-    const labels = await getUserLogLabels(userId);
+    const labels = await getUserLogLabels(userId, 'c2c');
     void rememberUser(author, { eventData, source: 'c2c' });
     const userName = labels.userName || resolveUserName(author, eventData);
     logger.message({
@@ -119,6 +120,7 @@ async function handleDirectMessage(eventData) {
     // 消息内容预处理
     const trimmedContent = content.trim();
     const labels = await getGuildLogLabels(guild_id, userId);
+    const userLabels = await getUserLogLabels(resolveUserOpenid(author), 'direct');
     void rememberGuild(guild_id, { author, fetchProfile: false });
     void rememberUser(author, { eventData, source: 'direct', guildId: guild_id });
     logger.message({
@@ -127,7 +129,7 @@ async function handleDirectMessage(eventData) {
       groupId: guild_id,
       groupName: labels.groupName,
       userId,
-      userName: labels.userName || resolveGuildMemberName(author),
+      userName: labels.userName || userLabels.userName || resolveGuildMemberName(author),
       content: trimmedContent
     });
     // 获取本地消息分发所需的群组上下文
@@ -213,7 +215,7 @@ async function sendFilteredTextToC2C(userOpenid, message, eventId = null, msgId 
  */
 async function sendReplyToC2C(responseData, userOpenid, messageId, userName = null) {
   try {
-    const labels = await getUserLogLabels(userOpenid);
+    const labels = await getUserLogLabels(userOpenid, 'c2c');
     logger.reply({
       type: '私聊',
       groupId: '-',

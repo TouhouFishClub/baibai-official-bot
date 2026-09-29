@@ -6,12 +6,25 @@ const {
   parseQqApiError
 } = require('../services/groupInfoService');
 
+function matchQuery(doc, query) {
+  return Object.entries(query).every(([key, value]) => {
+    if (value && typeof value === 'object' && !Array.isArray(value) && Array.isArray(value.$nin)) {
+      return !value.$nin.includes(doc[key]);
+    }
+    return doc[key] === value;
+  });
+}
+
 function createMemoryCollection(initialDocs = []) {
   const docs = new Map(initialDocs.map((doc) => [doc._id, { ...doc }]));
   return {
     docs,
-    async findOne(query) {
-      return docs.has(query._id) ? { ...docs.get(query._id) } : null;
+    async findOne(query, options = {}) {
+      const matches = [...docs.values()].filter((doc) => matchQuery(doc, query));
+      if (options.sort?.last_seen_at === -1) {
+        matches.sort((a, b) => new Date(b.last_seen_at || 0) - new Date(a.last_seen_at || 0));
+      }
+      return matches[0] ? { ...matches[0] } : null;
     },
     async updateOne(filter, update, options = {}) {
       let doc = docs.get(filter._id);
@@ -288,4 +301,34 @@ test('群资料在有效期内仍会按发言人补成员', async () => {
   assert.equal(groupFetch, 0);
   assert.equal(memberFetch, 1);
   assert.equal(await service.getStoredMemberName('group-1', 'member-1'), '接口昵称');
+});
+
+test('可按成员 openid 跨群取最近一次有昵称的记录', async () => {
+  const service = createService({
+    collection: createMemoryCollection(),
+    memberCollection: createMemoryCollection([
+      {
+        _id: 'group-old:member-1',
+        member_openid: 'member-1',
+        username: '旧群昵称',
+        last_seen_at: new Date('2026-09-29T10:00:00Z')
+      },
+      {
+        _id: 'group-new:member-1',
+        member_openid: 'member-1',
+        username: '新群昵称',
+        last_seen_at: new Date('2026-09-29T12:00:00Z')
+      },
+      {
+        _id: 'group-empty:member-1',
+        member_openid: 'member-1',
+        username: '',
+        last_seen_at: new Date('2026-09-29T13:00:00Z')
+      }
+    ]),
+    fetchGroupInfo: async () => ({ group_name: '忽略' })
+  });
+
+  assert.equal(await service.findMemberNameByOpenid('member-1'), '新群昵称');
+  assert.equal(await service.findMemberNameByOpenid('nobody'), null);
 });

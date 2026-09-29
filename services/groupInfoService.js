@@ -185,6 +185,24 @@ function createGroupInfoService(options = {}) {
     }
   }
 
+  async function findMemberNameByOpenid(memberOpenid) {
+    const id = String(memberOpenid || '').trim();
+    if (!id || !configured()) return null;
+    try {
+      const collection = await getMemberCollection();
+      if (!collection) return null;
+      const doc = await collection.findOne(
+        { member_openid: id, username: { $nin: [null, ''] } },
+        { sort: { last_seen_at: -1 } }
+      );
+      const name = String(doc?.username || '').trim();
+      return name || null;
+    } catch (error) {
+      log.warn('按 openid 查找群成员昵称失败', error);
+      return null;
+    }
+  }
+
   async function getLogLabels(groupOpenid, memberOpenid) {
     const [groupName, userName] = await Promise.all([
       getStoredGroupName(groupOpenid),
@@ -369,6 +387,7 @@ function createGroupInfoService(options = {}) {
     getStoredGroupName,
     getStoredGroupDoc,
     getStoredMemberName,
+    findMemberNameByOpenid,
     getLogLabels
   };
 }
@@ -396,6 +415,7 @@ module.exports = {
   rememberGroupOpenid: defaultService.rememberGroupOpenid,
   getStoredGroupName: defaultService.getStoredGroupName,
   getStoredMemberName: defaultService.getStoredMemberName,
+  findMemberNameByOpenid: defaultService.findMemberNameByOpenid,
   getLogLabels: defaultService.getLogLabels,
   observeGroupOpenid
 };

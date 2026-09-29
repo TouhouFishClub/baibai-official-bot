@@ -1,6 +1,7 @@
 /**
  * 私聊 / 频道私信的昵称与 openid 对应
- * 来源是事件体 author.username（及 nick/nickname），写入 db_bot.qq_users。
+ * 频道私信和 C2C 昵称分开存（direct_username / c2c_username）。
+ * C2C 常无事件昵称，回退 qq_group_members 同 openid 的群昵称，不用频道名。
  */
 
 const logger = require('../utils/logger');
@@ -51,6 +52,25 @@ function resolveSource(extra = {}) {
   return null;
 }
 
+function sourceUsernameField(source) {
+  return source === 'direct' ? 'direct_username' : 'c2c_username';
+}
+
+function readSourceName(doc, source) {
+  if (!doc || !source) return null;
+  const named = String(doc[sourceUsernameField(source)] || '').trim();
+  if (named) return named;
+  const sources = Array.isArray(doc.sources) ? [...new Set(doc.sources.filter(Boolean))] : [];
+  if (sources.length === 1 && sources[0] === source) {
+    return String(doc.username || '').trim() || null;
+  }
+  return null;
+}
+
+function defaultFindGroupMemberName(memberOpenid) {
+  return require('./groupInfoService').findMemberNameByOpenid(memberOpenid);
+}
+
 function createUserInfoService(options = {}) {
   const now = options.now || (() => new Date());
   const collectionName = resolveCollectionName(options.collectionName);
@@ -61,24 +81,30 @@ function createUserInfoService(options = {}) {
     return db.collection(collectionName);
   });
   const log = options.logger || logger;
+  const findGroupMemberName = options.findGroupMemberName || defaultFindGroupMemberName;
 
-  async function getStoredUserName(userOpenid) {
+  async function getStoredUserName(userOpenid, source = 'c2c') {
     const id = String(userOpenid || '').trim();
-    if (!id || !configured()) return null;
-    try {
-      const collection = await getCollection();
-      if (!collection) return null;
-      const doc = await collection.findOne({ _id: id });
-      const name = String(doc?.username || '').trim();
-      return name || null;
-    } catch (error) {
-      log.warn('读取私聊用户缓存失败', error);
-      return null;
+    const resolvedSource = source === 'direct' ? 'direct' : 'c2c';
+    if (!id) return null;
+    if (configured()) {
+      try {
+        const collection = await getCollection();
+        if (collection) {
+          const doc = await collection.findOne({ _id: id });
+          const name = readSourceName(doc, resolvedSource);
+          if (name) return name;
+        }
+      } catch (error) {
+        log.warn('读取私聊用户缓存失败', error);
+      }
     }
+    if (resolvedSource === 'c2c') return findGroupMemberName(id);
+    return null;
   }
 
-  async function getLogLabels(userOpenid) {
-    return { userName: await getStoredUserName(userOpenid) };
+  async function getLogLabels(userOpenid, source = 'c2c') {
+    return { userName: await getStoredUserName(userOpenid, source) };
   }
 
   async function rememberUser(author = {}, extra = {}) {
@@ -96,21 +122,27 @@ function createUserInfoService(options = {}) {
       }
       const seenAt = now();
       const eventData = resolveExtraEventData(extra);
-      const username = resolveUserName(author, extra);
       const source = resolveSource(extra);
+      const existing = await collection.findOne({ _id: id });
+      let username = resolveUserName(author, extra);
+      if (!username && source) {
+        username = readSourceName(existing, source);
+        if (!username && source === 'c2c') {
+          username = await findGroupMemberName(id);
+        }
+      }
       const guildId = String(extra.guildId || extra.guild_id || eventData.guild_id || '').trim();
       const update = {
-        user_openid: author.user_openid || '',
-        user_id: author.id || '',
-        union_openid: author.union_openid || '',
         last_seen_at: seenAt,
         updated_at: seenAt
       };
-      if (!update.user_openid && source === 'c2c') update.user_openid = id;
-      if (!update.user_id && source === 'direct') update.user_id = id;
-      if (username) update.username = username;
+      if (author.user_openid) update.user_openid = String(author.user_openid);
+      else if (source === 'c2c') update.user_openid = id;
+      if (author.union_openid) update.union_openid = String(author.union_openid);
+      if (source === 'direct' && author.id) update.user_id = String(author.id);
+      if (source && username) update[sourceUsernameField(source)] = username;
       if (source) update.last_source = source;
-      if (guildId) update.guild_id = guildId;
+      if (source === 'direct' && guildId) update.guild_id = guildId;
 
       const operation = { $set: update };
       if (source) operation.$addToSet = { sources: source };
@@ -151,6 +183,8 @@ module.exports = {
   createUserInfoService,
   resolveUserOpenid,
   resolveUserName,
+  readSourceName,
+  sourceUsernameField,
   rememberUser: defaultService.rememberUser,
   getStoredUserName: defaultService.getStoredUserName,
   getLogLabels: defaultService.getLogLabels,
