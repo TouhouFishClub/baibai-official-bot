@@ -1,10 +1,10 @@
 const fs = require('fs')
 const path = require('path')
-const { pathToFileURL } = require('url')
 const { IMAGE_DATA } = require(path.join(__dirname, '..', '..', '..', 'baibaiConfigs.js'))
 const { getBrowserLaunchOptions } = require('../../../utils/browserOptions')
 const { loadPuppeteer } = require('../../../utils/htmlToImage')
-const { getCjkFontCss } = require('../../../utils/cjkFont')
+const { injectCjkFontHtml } = require('../../../utils/cjkFont')
+const { fileToDataUri } = require('../../../utils/fileDataUri')
 const logger = require('../../../utils/logger')
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -63,10 +63,9 @@ const scheduleBrowserClose = () => {
 }
 
 // ====== 模板路径 & 图片路径 ======
-const TEMPLATE_PATH = pathToFileURL(path.join(__dirname, 'template.html')).href
-const SKILL_ICON_BASE = `${pathToFileURL(path.join(__dirname, 'img', 'Skill')).href}/`
+const TEMPLATE_HTML = fs.readFileSync(path.join(__dirname, 'template.html'), 'utf8')
+const SKILL_ICON_DIR = path.join(__dirname, 'img', 'Skill')
 const ITEM_ICON_DIR = path.join(__dirname, 'img', 'item')
-const ITEM_ICON_BASE = `${pathToFileURL(ITEM_ICON_DIR).href}/`
 // 图片远程服务器（优先CN，回退KR）
 const ITEM_IMAGE_SERVERS = [
   'https://mabires2.pril.cc/invimage/cn',
@@ -228,6 +227,37 @@ const serializeRecipeForRender = r => ({
   cookExp: r.cookExp || 0,
 })
 
+function buildItemIconMap(ids) {
+  const map = {}
+  for (const id of new Set((ids || []).filter((itemId) => itemId > 0))) {
+    const uri = fileToDataUri(path.join(ITEM_ICON_DIR, `${id}.png`))
+    if (uri) map[String(id)] = uri
+  }
+  return map
+}
+
+function collectSkillIconKeys(recipes, subRecipes) {
+  const keys = new Set(['58010'])
+  const addRecipe = (recipe) => {
+    if (recipe.skillId) keys.add(String(recipe.skillId))
+    if (recipe.actionCn) keys.add(`10020${recipe.actionCn}`)
+  }
+  for (const recipe of recipes || []) addRecipe(recipe)
+  for (const subs of Object.values(subRecipes || {})) {
+    for (const recipe of subs) addRecipe(recipe)
+  }
+  return keys
+}
+
+function buildSkillIconMap(keys) {
+  const map = {}
+  for (const key of keys) {
+    const uri = fileToDataUri(path.join(SKILL_ICON_DIR, `${key}.png`))
+    if (uri) map[String(key)] = uri
+  }
+  return map
+}
+
 /**
  * 渲染配方图片
  * @param {Object} product - {id, name}
@@ -265,18 +295,12 @@ const renderRecipeImage = async (product, recipes, allItems, recipesByProduct, s
     const browser = await getBrowser()
     page = await browser.newPage()
     await page.setViewport({ width: 560, height: 600, deviceScaleFactor: 2 })
-
-    // 加载模板
-    await page.goto(TEMPLATE_PATH, { waitUntil: 'domcontentloaded' })
-    const cjkFontCss = getCjkFontCss()
-    if (cjkFontCss) {
-      await page.addStyleTag({ content: cjkFontCss })
-      await page.evaluate(async () => {
-        if (document.fonts && document.fonts.ready) {
-          await document.fonts.ready;
-        }
-      })
-    }
+    await page.setContent(injectCjkFontHtml(TEMPLATE_HTML), { waitUntil: 'load' })
+    await page.evaluate(async () => {
+      if (document.fonts && document.fonts.ready) {
+        await document.fonts.ready
+      }
+    })
 
     // 准备数据 - 将配方数据序列化
     const recipeData = recipes.map(serializeRecipeForRender)
@@ -289,8 +313,8 @@ const renderRecipeImage = async (product, recipes, allItems, recipesByProduct, s
       recipes: recipeData,
       showDesc,
       subRecipes,
-      skillIconBase: SKILL_ICON_BASE,
-      itemIconBase: ITEM_ICON_BASE,
+      itemIcons: buildItemIconMap(allItemIds),
+      skillIcons: buildSkillIconMap(collectSkillIconKeys(recipes, subRecipes)),
     }
 
     // 注入数据并渲染

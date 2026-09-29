@@ -583,28 +583,33 @@
     }
 
     let _itemIconBase = ''
+    let _skillIconBase = ''
+    let _itemIcons = {}
+    let _skillIcons = {}
 
     function getImageUrl(itemId) {
-      if (_itemIconBase) return _itemIconBase + itemId + '.png'
-      return `https://mabires2.pril.cc/invimage/kr/${itemId}/${itemId}.png`
+      return _itemIcons[itemId] || _itemIcons[String(itemId)] ||
+        (_itemIconBase ? _itemIconBase + itemId + '.png' : `https://mabires2.pril.cc/invimage/kr/${itemId}/${itemId}.png`)
     }
-
-    let _skillIconBase = ''
 
     function getSkillIconUrl(skillId) {
       if (!skillId) return ''
-      return _skillIconBase + skillId + '.png'
+      return _skillIcons[skillId] || _skillIcons[String(skillId)] ||
+        (_skillIconBase ? _skillIconBase + skillId + '.png' : '')
     }
 
     function getCookingActionIconUrl(actionCn) {
       if (!actionCn) return ''
-      return _skillIconBase + '10020' + actionCn + '.png'
+      const key = '10020' + actionCn
+      return _skillIcons[key] || (_skillIconBase ? _skillIconBase + key + '.png' : '')
     }
 
     function renderRecipes(data) {
-      const { product, recipes, showDesc, subRecipes, skillIconBase, itemIconBase } = data
+      const { product, recipes, showDesc, subRecipes, skillIconBase, itemIconBase, itemIcons, skillIcons } = data
       _skillIconBase = skillIconBase || ''
       _itemIconBase = itemIconBase || ''
+      _itemIcons = itemIcons || {}
+      _skillIcons = skillIcons || {}
       const container = document.getElementById('recipe-container')
 
       // 收集所有涉及的技能（去重）
