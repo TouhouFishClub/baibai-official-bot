@@ -1,12 +1,13 @@
 const path = require("path");
 const { IMAGE_DATA } = require(path.join(__dirname, '..', '..', 'baibaiConfigs.js'))
-const puppeteer = require('puppeteer');
 const { getBrowserLaunchOptions } = require('../../utils/browserOptions');
+const { loadPuppeteer } = require('../../utils/htmlToImage');
 
 const mabiWeather = async (content, callback) => {
   let browser;
   
   try {
+    const puppeteer = await loadPuppeteer();
     // 启动浏览器，添加更多兼容性选项
     browser = await puppeteer.launch(getBrowserLaunchOptions({
       args: [

@@ -3,6 +3,7 @@ const path = require('path')
 const { pathToFileURL } = require('url')
 const { IMAGE_DATA } = require(path.join(__dirname, '..', '..', '..', 'baibaiConfigs.js'))
 const { getBrowserLaunchOptions } = require('../../../utils/browserOptions')
+const { loadPuppeteer } = require('../../../utils/htmlToImage')
 const logger = require('../../../utils/logger')
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -30,7 +31,7 @@ const getBrowser = async () => {
     }
   }
 
-  const puppeteer = require('puppeteer')
+  const puppeteer = await loadPuppeteer()
   _browser = await puppeteer.launch(getBrowserLaunchOptions({
     args: [
       '--no-sandbox',

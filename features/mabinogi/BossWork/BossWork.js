@@ -1,7 +1,7 @@
 const path = require('path')
-const nodeHtmlToImage = require('node-html-to-image')
 const { IMAGE_DATA } = require(path.join(__dirname, '..', '..', '..', 'baibaiConfigs.js'))
 const { getBrowserLaunchOptions } = require('../../../utils/browserOptions')
+const { htmlToImage } = require('../../../utils/htmlToImage')
 const BossList = {
 	BlackDragon: {
 		genMinute: 57,
@@ -322,7 +322,7 @@ const RenderWorkTimeLine = (callback) => {
 	let output = path.join(IMAGE_DATA, 'mabi_other', `bosswork.png`)
 	// let output = path.join(`bosswork.png`)
 
-	nodeHtmlToImage({
+	htmlToImage({
 		output,
 		puppeteerArgs: getBrowserLaunchOptions(),
 		html: `

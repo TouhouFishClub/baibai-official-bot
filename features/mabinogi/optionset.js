@@ -373,10 +373,10 @@ class SearchHandler {
 
     switch (type) {
       case 'image':
-        optionsetImage(optionsetInfo, wheres, 'mabi', callback)
+        await optionsetImage(optionsetInfo, wheres, 'mabi', callback)
         break
       case 'html':
-        optionsetHtmlImage(optionsetInfo, wheres, callback)
+        await optionsetHtmlImage(optionsetInfo, wheres, callback)
         break
       default:
         this._renderTextResult(optionsetInfo, wheres, callback)

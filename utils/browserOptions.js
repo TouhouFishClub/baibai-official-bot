@@ -2,7 +2,16 @@ const fs = require('fs');
 
 function findBrowserExecutable() {
   const configured = process.env.BROWSER_EXECUTABLE_PATH || process.env.PUPPETEER_EXECUTABLE_PATH;
-  if (configured) {
+  if (configured && fs.existsSync(configured)) {
+    if (configured === '/snap/bin/chromium') {
+      const snapChrome = [
+        '/snap/chromium/current/usr/lib/chromium-browser/chrome',
+        '/snap/chromium/current/usr/lib/chromium-browser/chromium'
+      ].find((candidate) => fs.existsSync(candidate));
+      if (snapChrome) {
+        return snapChrome;
+      }
+    }
     return configured;
   }
 
@@ -18,7 +27,10 @@ function findBrowserExecutable() {
         '/usr/bin/google-chrome',
         '/usr/bin/google-chrome-stable',
         '/usr/bin/chromium',
-        '/usr/bin/chromium-browser'
+        '/usr/bin/chromium-browser',
+        '/snap/chromium/current/usr/lib/chromium-browser/chrome',
+        '/snap/chromium/current/usr/lib/chromium-browser/chromium',
+        '/snap/bin/chromium'
       ];
 
   return candidates.find((candidate) => candidate && fs.existsSync(candidate));
@@ -26,16 +38,18 @@ function findBrowserExecutable() {
 
 function getBrowserLaunchOptions(extra = {}) {
   const executablePath = findBrowserExecutable();
+  const { args: extraArgs, ...rest } = extra;
   return {
     headless: true,
-    args: [
+    args: [...new Set([
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-gpu'
-    ],
+      '--disable-gpu',
+      ...(extraArgs || [])
+    ])],
     ...(executablePath ? { executablePath } : {}),
-    ...extra
+    ...rest
   };
 }
 

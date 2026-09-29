@@ -5,9 +5,9 @@ const {
 	loadChinaFeaturesByItemId,
 	pickMabiItemAmongDuplicates,
 } = require(path.join(__dirname, '..', 'lib', 'chinaFeatureItemMap.js'))
-const nodeHtmlToImage = require('node-html-to-image')
 const { IMAGE_DATA } = require(path.join(__dirname, '..', '..', '..', 'baibaiConfigs.js'))
 const { getBrowserLaunchOptions } = require('../../../utils/browserOptions')
+const { htmlToImage } = require('../../../utils/htmlToImage')
 
 const parser = new xml2js.Parser()
 let filterDataStorage = {}
@@ -797,7 +797,7 @@ const renderImage = (targetItem, upgradeInfos, callback, otherMsg = '') => {
 </html>`
 	let output = path.join(IMAGE_DATA, 'mabi_other', `MabiItemUpgrade.png`)
 	// let output = './MabiItemUpgrade.png'
-	nodeHtmlToImage({
+	htmlToImage({
 		output,
 		puppeteerArgs: getBrowserLaunchOptions(),
 		html

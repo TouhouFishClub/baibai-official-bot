@@ -1,6 +1,6 @@
 const path = require("path-extra");
 
-const nodeHtmlToImage = require('node-html-to-image')
+const { htmlToImage } = require('../../../utils/htmlToImage')
 const { IMAGE_DATA } = require(path.join(__dirname, '..', '..', '..', 'baibaiConfigs.js'))
 const { getBrowserLaunchOptions } = require('../../../utils/browserOptions')
 
@@ -36,7 +36,7 @@ const optionsetHtmlImage = (obj, wheres, callback) => {
     })
   }
 
-  nodeHtmlToImage({
+  return htmlToImage({
     output,
     puppeteerArgs: getBrowserLaunchOptions(),
     html: `

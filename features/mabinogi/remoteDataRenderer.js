@@ -1,7 +1,7 @@
 const path = require('path');
-const nodeHtmlToImage = require('node-html-to-image');
 const { IMAGE_DATA } = require('../../baibaiConfigs');
 const { getBrowserLaunchOptions } = require('../../utils/browserOptions');
+const { htmlToImage } = require('../../utils/htmlToImage');
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -28,7 +28,7 @@ tr:nth-child(even){background:#182234}.empty{text-align:center;padding:42px;colo
 ${rows.length ? `<table><thead><tr>${columns.map((column) => `<th>${escapeHtml(column.label)}</th>`).join('')}</tr></thead>
 <tbody>${rows.map((row) => `<tr>${columns.map((column) => `<td>${escapeHtml(column.format ? column.format(row[column.key], row) : row[column.key])}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<div class="empty">暂无符合条件的数据</div>'}
 </div></body></html>`;
-  await nodeHtmlToImage({
+  await htmlToImage({
     output,
     html,
     puppeteerArgs: getBrowserLaunchOptions()

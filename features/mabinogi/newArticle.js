@@ -1,11 +1,12 @@
 const path = require("path");
 const { IMAGE_DATA } = require(path.join(__dirname, '..', '..', 'baibaiConfigs.js'))
-const puppeteer = require('puppeteer');
 const { getBrowserLaunchOptions } = require('../../utils/browserOptions');
+const { loadPuppeteer } = require('../../utils/htmlToImage');
 
 const tcArticle = async (content, callback) => {
   let browser;
   try {
+    const puppeteer = await loadPuppeteer();
     browser = await puppeteer.launch(getBrowserLaunchOptions({
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     }));
