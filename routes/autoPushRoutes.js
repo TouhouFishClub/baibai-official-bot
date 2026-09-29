@@ -202,7 +202,7 @@ router.delete('/configs/:id', async (req, res) => {
 router.post('/configs/:id/start', async (req, res) => {
   try {
     const { id } = req.params;
-    startConfigPush(id);
+    await startConfigPush(id);
     
     res.json({
       success: true,
@@ -227,7 +227,7 @@ router.post('/configs/:id/start', async (req, res) => {
 router.post('/configs/:id/stop', async (req, res) => {
   try {
     const { id } = req.params;
-    stopConfigPush(id);
+    await stopConfigPush(id);
     
     res.json({
       success: true,
@@ -300,7 +300,7 @@ router.post('/configs/:id/clear-records', async (req, res) => {
  */
 router.post('/stop-all', async (req, res) => {
   try {
-    stopAllPush();
+    await stopAllPush();
     
     res.json({
       success: true,
@@ -453,7 +453,7 @@ router.get('/config', async (req, res) => {
  */
 router.post('/start', async (req, res) => {
   try {
-    const result = startAutoPush();
+    const result = await startAutoPush();
     
     if (result === false) {
       return res.status(400).json({
@@ -484,7 +484,7 @@ router.post('/start', async (req, res) => {
  */
 router.post('/stop', async (req, res) => {
   try {
-    stopAutoPush();
+    await stopAutoPush();
     
     res.json({
       success: true,

@@ -66,8 +66,7 @@ async function saveConfigsToFile() {
     await ensureDataDir();
     const configsData = pushConfigs.map(config => ({
       ...config,
-      // 不保存enabled状态，重启后默认为false
-      enabled: false
+      enabled: Boolean(config.enabled)
     }));
     await fs.writeFile(CONFIGS_FILE, JSON.stringify(configsData, null, 2));
     console.log('配置已保存到文件');
@@ -89,6 +88,7 @@ async function loadConfigsFromFile() {
     
     // 为每个配置初始化推送记录
     configs.forEach(config => {
+      config.enabled = Boolean(config.enabled);
       if (!pushedPostIds.has(config.id)) {
         pushedPostIds.set(config.id, new Set());
       }
@@ -148,7 +148,20 @@ async function initializeService() {
   logger.service('初始化自动推送服务...');
   await loadConfigsFromFile();
   await loadRecordsFromFile();
+  await restoreEnabledPushes();
   logger.service('自动推送服务初始化完成');
+}
+
+async function restoreEnabledPushes() {
+  const toRestore = pushConfigs.filter((config) => config.enabled && config.channelId && config.sourceUrl);
+  for (const config of toRestore) {
+    try {
+      await startConfigPush(config.id);
+      logger.service(`已恢复推送任务: ${config.name}`);
+    } catch (error) {
+      logger.warn(`恢复推送任务失败: ${config.name}`, error.message);
+    }
+  }
 }
 
 /**
@@ -231,7 +244,7 @@ function getConfig(configId) {
  */
 async function deleteConfig(configId) {
   // 先停止该配置的推送
-  stopConfigPush(configId);
+  await stopConfigPush(configId, { persist: false });
   
   // 清理推送记录
   pushedPostIds.delete(configId);
@@ -479,7 +492,7 @@ async function executeConfigCheck(configId) {
  * 启动配置的自动推送
  * @param {string} configId - 配置ID
  */
-function startConfigPush(configId) {
+async function startConfigPush(configId) {
   const config = getConfig(configId);
   if (!config) {
     throw new Error('配置不存在');
@@ -489,14 +502,15 @@ function startConfigPush(configId) {
     throw new Error('配置不完整，缺少频道ID或源URL');
   }
   
-  // 停止现有定时器（如果有）
-  stopConfigPush(configId);
+  // 停止现有定时器（如果有），不要把开关写成关闭再落盘
+  await stopConfigPush(configId, { persist: false });
   
   // 必须先启用，executeConfigCheck 会校验 enabled
   const configIndex = pushConfigs.findIndex(c => c.id === configId);
   if (configIndex >= 0) {
     pushConfigs[configIndex].enabled = true;
   }
+  await saveConfigsToFile();
   
   console.log(`启动配置 "${config.name}" 的自动推送，检查间隔: ${config.checkInterval / 1000}秒`);
   
@@ -519,7 +533,7 @@ function startConfigPush(configId) {
  * 停止配置的自动推送
  * @param {string} configId - 配置ID
  */
-function stopConfigPush(configId) {
+async function stopConfigPush(configId, { persist = true } = {}) {
   if (activeTasks.has(configId)) {
     clearInterval(activeTasks.get(configId));
     activeTasks.delete(configId);
@@ -531,15 +545,20 @@ function stopConfigPush(configId) {
   if (configIndex >= 0) {
     pushConfigs[configIndex].enabled = false;
   }
+  if (persist) {
+    await saveConfigsToFile();
+  }
 }
 
 /**
  * 停止所有自动推送
  */
-function stopAllPush() {
-  for (const configId of activeTasks.keys()) {
-    stopConfigPush(configId);
+async function stopAllPush() {
+  const runningIds = [...activeTasks.keys()];
+  for (const configId of runningIds) {
+    await stopConfigPush(configId, { persist: false });
   }
+  await saveConfigsToFile();
   console.log('所有自动推送已停止');
 }
 
