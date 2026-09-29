@@ -72,7 +72,7 @@ test('QA 按群隔离并限制写权限', async () => {
     groupId: 'group-b',
     userId: 'normal-user'
   });
-  assert.equal(isolated.data.message, '未找到相关内容');
+  assert.equal(isolated.data, null);
 });
 
 test('QA 同群并发写不会损坏 JSON', async () => {
@@ -114,4 +114,13 @@ test('普通消息直接进入本地分发而不是通用命令', async () => {
     userId: 'normal-user'
   });
   assert.match(result.data.message, /专家地下城/);
+});
+
+test('未知普通消息静默处理', async () => {
+  const result = await executeInput('没有配置过的普通聊天内容', {
+    groupId: 'message-group',
+    userId: 'normal-user'
+  });
+  assert.equal(result.status, 'ok');
+  assert.equal(result.data, null);
 });

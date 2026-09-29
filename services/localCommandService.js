@@ -213,7 +213,7 @@ async function executeMessage(content, context = {}) {
   if (calculation !== undefined && calculation !== null) {
     return text(`${normalized}=${calculation}`);
   }
-  return text('未找到相关内容');
+  return ok(null);
 }
 
 async function executeCommand(command, content, context = {}) {
