@@ -3,11 +3,10 @@
  * 负责处理QQ频道论坛相关功能，如发帖等
  */
 
-const axios = require('axios');
 const {
   getAccessToken,
   QQ_API_ROOT: QQ_CHANNEL_API_ROOT,
-  qqRequestConfig
+  qqRequest
 } = require('./messageService');
 
 /**
@@ -42,13 +41,14 @@ async function publishThread(channelId, title, content, format = 2) {
     console.log(`准备发表频道文章，标题 ${title.length} 字符，正文 ${content.length} 字符`);
     
     // 发送发帖请求
-    const response = await axios.put(
+    const response = await qqRequest(
+      'PUT',
       apiUrl,
       requestData,
-      qqRequestConfig({
+      {
         'Content-Type': 'application/json',
         'Authorization': `QQBot ${accessToken}`
-      })
+      }
     );
     
     console.log('发帖请求已成功提交');
@@ -109,11 +109,13 @@ async function getGuildsList() {
     
     console.log('尝试获取机器人所在的频道服务器列表');
     
-    const response = await axios.get(
+    const response = await qqRequest(
+      'GET',
       `${QQ_CHANNEL_API_ROOT}/users/@me/guilds`,
-      qqRequestConfig({
+      null,
+      {
         'Authorization': `QQBot ${accessToken}`
-      })
+      }
     );
     
     console.log('频道服务器列表获取成功');
@@ -139,11 +141,13 @@ async function getChannelsList(guildId) {
     
     console.log(`尝试获取频道服务器 ${guildId} 下的子频道列表`);
     
-    const response = await axios.get(
+    const response = await qqRequest(
+      'GET',
       `${QQ_CHANNEL_API_ROOT}/guilds/${guildId}/channels`,
-      qqRequestConfig({
+      null,
+      {
         'Authorization': `QQBot ${accessToken}`
-      })
+      }
     );
     
     console.log('子频道列表获取成功');
@@ -169,11 +173,13 @@ async function getChannelInfo(channelId) {
     
     console.log(`尝试获取频道 ${channelId} 的信息`);
     
-    const response = await axios.get(
+    const response = await qqRequest(
+      'GET',
       `${QQ_CHANNEL_API_ROOT}/channels/${channelId}`,
-      qqRequestConfig({
+      null,
+      {
         'Authorization': `QQBot ${accessToken}`
-      })
+      }
     );
     
     console.log('频道信息获取成功');

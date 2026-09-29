@@ -3,7 +3,6 @@
  * 处理QQ私信和频道私信消息
  */
 
-const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const {
@@ -12,7 +11,7 @@ const {
   sendC2CMessage,
   getAccessToken,
   QQ_API_ROOT,
-  qqRequestConfig
+  qqRequest
 } = require('../services/messageService');
 const { processBase64Image, getImageInfo } = require('../utils/imageProcessor');
 const { executeInput } = require('../services/localCommandService');
@@ -325,17 +324,18 @@ async function uploadFileForC2C(userOpenid, url, fileType) {
     const accessToken = await getAccessToken();
     
     // 构建上传文件请求 - QQ私信使用用户API
-    const response = await axios.post(
+    const response = await qqRequest(
+      'POST',
       `${QQ_API_ROOT}/v2/users/${userOpenid}/files`,
       {
         file_type: fileType,
         url: url,
-        srv_send_msg: false // 不直接发送，仅获取file_info
+        srv_send_msg: false
       },
-      qqRequestConfig({
+      {
         'Content-Type': 'application/json',
         'Authorization': `QQBot ${accessToken}`
-      })
+      }
     );
     
     if (!response.data || !response.data.file_info) {

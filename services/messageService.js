@@ -4,6 +4,7 @@
  */
 
 const dns = require('dns');
+const fs = require('fs');
 const https = require('https');
 const axios = require('axios');
 const logger = require('../utils/logger');
@@ -11,11 +12,6 @@ const logger = require('../utils/logger');
 if (typeof dns.setDefaultResultOrder === 'function') {
   dns.setDefaultResultOrder('ipv4first');
 }
-
-const qqHttpsAgent = new https.Agent({
-  family: 4,
-  keepAlive: true
-});
 
 // 默认沿用已验证可通的旧域名；新文档域名可通过环境变量覆盖。
 const QQ_API_ROOT = String(process.env.QQ_API_ROOT || 'https://api.sgroup.qq.com').replace(/\/+$/, '');
@@ -26,17 +22,98 @@ const configuredTimeout = Number(process.env.QQ_API_TIMEOUT_MS);
 const QQ_API_TIMEOUT_MS = Number.isFinite(configuredTimeout) && configuredTimeout > 0
   ? configuredTimeout
   : 15000;
+const DNS_TIMEOUT_MS = Math.min(5000, QQ_API_TIMEOUT_MS);
 let cachedAccessToken = null;
 let accessTokenExpiresAt = 0;
 let accessTokenRequest = null;
+
+function forceLog(line) {
+  logger.info(line);
+  try {
+    fs.writeSync(1, `${line}\n`);
+  } catch (_) {
+    // PM2 管道上 writeSync 失败时仍保留 logger 输出。
+  }
+}
+
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error(`${label} 超时（${ms}ms）`);
+      error.code = 'ETIMEDOUT';
+      forceLog(`[QQ] ${error.message}`);
+      reject(error);
+    }, ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+function lookupIpv4(hostname) {
+  return new Promise((resolve, reject) => {
+    dns.lookup(hostname, { family: 4 }, (error, address) => {
+      if (error) reject(error);
+      else resolve(address);
+    });
+  });
+}
 
 function qqRequestConfig(headers = {}) {
   return {
     timeout: QQ_API_TIMEOUT_MS,
     family: 4,
-    httpsAgent: qqHttpsAgent,
     headers
   };
+}
+
+async function qqRequest(method, url, data, headers = {}) {
+  const parsed = new URL(url);
+  logger.debug('QQ 请求开始', {
+    method,
+    host: parsed.hostname,
+    path: parsed.pathname
+  });
+
+  const lookupPromise = lookupIpv4(parsed.hostname);
+  lookupPromise.catch(() => undefined);
+  const address = await withTimeout(
+    lookupPromise,
+    DNS_TIMEOUT_MS,
+    `DNS ${parsed.hostname}`
+  );
+  logger.debug('QQ DNS 完成', { host: parsed.hostname, address });
+
+  const requestUrl = `${parsed.protocol}//${address}${parsed.pathname}${parsed.search}`;
+  const agent = new https.Agent({
+    keepAlive: false,
+    servername: parsed.hostname,
+    lookup: (_host, _options, callback) => callback(null, address, 4)
+  });
+  const axiosConfig = {
+    method,
+    url: requestUrl,
+    headers: {
+      Host: parsed.hostname,
+      ...headers
+    },
+    timeout: QQ_API_TIMEOUT_MS,
+    family: 4,
+    httpsAgent: agent
+  };
+  if (method !== 'GET' && method !== 'HEAD') {
+    axiosConfig.data = data;
+  }
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    axiosConfig.signal = AbortSignal.timeout(QQ_API_TIMEOUT_MS);
+  }
+
+  const requestPromise = axios(axiosConfig);
+  requestPromise.catch(() => undefined);
+  return withTimeout(
+    requestPromise,
+    QQ_API_TIMEOUT_MS,
+    `${method} ${parsed.hostname}${parsed.pathname}`
+  );
 }
 
 function logRequestError(message, error) {
@@ -87,15 +164,16 @@ async function getAccessToken() {
     }
     
     logger.debug('开始获取访问令牌', { url: QQ_TOKEN_URL });
-    const tokenResponse = await axios.post(
+    const tokenResponse = await qqRequest(
+      'POST',
       QQ_TOKEN_URL,
       {
         appId: appId,
         clientSecret: appSecret
       },
-      qqRequestConfig({
+      {
         'Content-Type': 'application/json'
-      })
+      }
     );
     
     if (!tokenResponse.data || !tokenResponse.data.access_token) {
@@ -151,13 +229,14 @@ async function sendGroupMessage(groupOpenid, message, eventId = null, msgId = nu
       hasMsgId: Boolean(requestData.msg_id),
       msgSeq: requestData.msg_seq
     });
-    const response = await axios.post(
+    const response = await qqRequest(
+      'POST',
       requestUrl,
       requestData,
-      qqRequestConfig({
+      {
         'Content-Type': 'application/json',
         'Authorization': `QQBot ${accessToken}`
-      })
+      }
     );
     
     logger.info('群聊消息发送成功');
@@ -271,13 +350,14 @@ async function sendChannelMessage(channelId, messageData, eventId = null, msgId 
     logger.debug('发送频道消息', { channelId, contentLength: requestData.content?.length || 0 });
     
     // 发送消息请求 - 根据官方文档，频道消息也使用QQBot认证格式
-    const response = await axios.post(
+    const response = await qqRequest(
+      'POST',
       `${QQ_API_ROOT}/channels/${channelId}/messages`,
       requestData,
-      qqRequestConfig({
+      {
         'Content-Type': 'application/json',
         'Authorization': `QQBot ${accessToken}`
-      })
+      }
     );
     
     logger.info('频道消息发送成功');
@@ -397,13 +477,14 @@ async function sendC2CMessage(userOpenid, message, eventId = null, msgId = null,
     }
     
     // 发送消息请求 - 根据官方文档使用v2/users/{openid}/messages
-    const response = await axios.post(
+    const response = await qqRequest(
+      'POST',
       `${QQ_API_ROOT}/v2/users/${userOpenid}/messages`,
       requestData,
-      qqRequestConfig({
+      {
         'Content-Type': 'application/json',
         'Authorization': `QQBot ${accessToken}`
-      })
+      }
     );
     
     logger.info('QQ单聊消息发送成功');
@@ -463,13 +544,14 @@ async function sendDirectMessage(guildId, messageData, eventId = null, msgId = n
     logger.debug('发送频道私信消息', { guildId, contentLength: requestData.content?.length || 0 });
     
     // 发送消息请求 - 根据官方文档使用/dms/{guild_id}/messages
-    const response = await axios.post(
+    const response = await qqRequest(
+      'POST',
       `${QQ_API_ROOT}/dms/${guildId}/messages`,
       requestData,
-      qqRequestConfig({
+      {
         'Content-Type': 'application/json',
         'Authorization': `QQBot ${accessToken}`
-      })
+      }
     );
     
     logger.info('频道私信消息发送成功');
@@ -517,6 +599,8 @@ module.exports = {
   getAccessToken,
   QQ_API_ROOT,
   QQ_API_TIMEOUT_MS,
+  qqRequest,
   qqRequestConfig,
+  withTimeout,
   validateTypedMessage
 }; 
