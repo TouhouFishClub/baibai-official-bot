@@ -35,9 +35,8 @@ npm start
 - `GET /admin`：管理页面
 - `/put/*`：频道文章
 - `/auto-push/*`：自动推送
-- `/openapi/{mbi,mbd,opt,meu,mbtv,mbcd,mbzz,mbtvs,mbcds,mbzzs,mblogs}`：具名命令兼容接口
 
-消息 handler 直接把普通消息交给本地分发器，具名命令才进入对应命令处理器；不再存在旧版 `uni` 通用接口。
+消息 handler 直接把普通消息交给本地分发器，具名命令才进入对应命令处理器。
 
 ## 本地命令
 

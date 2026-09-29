@@ -18,7 +18,6 @@ const webhookController = require('../controllers/webhookController');
 const forumRoutes = require('../routes/forumRoutes');
 const autoPushRoutes = require('../routes/autoPushRoutes');
 const adminAuthRoutes = require('../routes/adminAuthRoutes');
-const openApiRoutes = require('../routes/openApiRoutes');
 
 // 引入自动推送服务
 const autoPushService = require('../services/autoPushService');
@@ -89,9 +88,6 @@ app.use('/auto-push', autoPushRoutes);
 
 // 管理员认证路由
 app.use('/admin', adminAuthRoutes);
-
-// 本地命令兼容接口（消息处理器直接调用同一服务，不经过 HTTP）
-app.use('/openapi', openApiRoutes);
 
 // 管理页面路由
 app.get('/admin', (req, res) => {

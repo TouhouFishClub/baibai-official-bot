@@ -14,18 +14,9 @@ const request = require('supertest');
 const { app } = require('../src');
 const { generateSignature, verifySignature } = require('../utils/signature');
 
-test('健康状态与本地 OpenAPI 可访问', async () => {
+test('健康状态可访问', async () => {
   const health = await request(app).get('/').expect(200);
   assert.equal(health.body.message, 'service ok');
-
-  const openapi = await request(app).get('/openapi').expect(200);
-  assert.equal(openapi.body.status, 'ok');
-  assert.ok(openapi.body.commands.includes('mblogs'));
-
-  const deferred = await request(app).get('/openapi/mbcd').expect(200);
-  assert.match(deferred.body.data.message, /数据库桥接服务暂不可用/);
-
-  await request(app).get('/openapi/uni?content=test').expect(404);
 });
 
 test('探针路径不会暴露环境文件', async () => {
