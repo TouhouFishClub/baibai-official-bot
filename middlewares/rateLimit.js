@@ -1,6 +1,6 @@
 /**
  * 简易内存限流：登录接口严格限制，其余请求按 IP 节流。
- * QQ webhook 不限流，避免平台回调被误伤。
+ * QQ webhook 与 /temp_images 不限流，避免平台回调和拉图被误伤。
  */
 
 const loginHits = new Map();
@@ -45,7 +45,12 @@ setInterval(() => {
 }, 60 * 1000).unref();
 
 function rateLimit(req, res, next) {
-  if (req.path === '/qq/webhook' || req.originalUrl?.startsWith('/qq/webhook')) {
+  if (
+    req.path === '/qq/webhook' ||
+    req.originalUrl?.startsWith('/qq/webhook') ||
+    req.path.startsWith('/temp_images') ||
+    req.originalUrl?.startsWith('/temp_images')
+  ) {
     return next();
   }
 

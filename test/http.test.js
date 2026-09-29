@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
 
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-jwt-secret-that-is-long-enough';
@@ -28,6 +30,24 @@ test('健康状态与本地 OpenAPI 可访问', async () => {
 
 test('探针路径不会暴露环境文件', async () => {
   await request(app).get('/.env').expect(404);
+});
+
+test('临时图片可通过静态路径访问', async () => {
+  const directory = path.join(__dirname, '../public/temp_images');
+  fs.mkdirSync(directory, { recursive: true });
+  const fileName = `http-test-${process.pid}.png`;
+  const filePath = path.join(directory, fileName);
+  fs.writeFileSync(filePath, Buffer.from('png-test'));
+
+  try {
+    const response = await request(app).get(`/temp_images/${fileName}`).expect(200);
+    const payload = Buffer.isBuffer(response.body)
+      ? response.body.toString()
+      : String(response.text || response.body || '');
+    assert.match(payload, /png-test/);
+  } finally {
+    fs.unlinkSync(filePath);
+  }
 });
 
 test('直接访问 Webhook 不会导致服务退出', async () => {

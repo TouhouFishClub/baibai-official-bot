@@ -8,6 +8,7 @@ const path = require('path');
 const { sendTextToChannel, sendImageToChannel } = require('../services/messageService');
 const { processBase64Image, getImageInfo } = require('../utils/imageProcessor');
 const { executeInput } = require('../services/localCommandService');
+const { joinPublicUrl } = require('../utils/publicUrl');
 const logger = require('../utils/logger');
 
 /**
@@ -87,10 +88,8 @@ async function sendReplyToChannel(responseData, channelId, messageId) {
         return;
       }
       
-      // 获取绝对URL路径并进行URL编码
-      const serverHost = process.env.SERVER_HOST || 'http://localhost:3000';
-      const encodedFileName = encodeURIComponent(fileName);
-      const imageUrl = `${serverHost}/temp_images/${encodedFileName}`;
+      const imageUrl = joinPublicUrl(`temp_images/${encodeURIComponent(fileName)}`);
+      logger.info('频道使用公网 image URL', { imageUrl, fileName });
       
       if (responseData.message) {
         const convertedMessage = convertCQCodeToQQFormat(responseData.message);

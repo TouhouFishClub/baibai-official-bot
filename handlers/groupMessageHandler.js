@@ -7,13 +7,12 @@ const fs = require('fs');
 const path = require('path');
 const {
   sendTextToGroup,
-  sendMediaToGroup,
-  getAccessToken,
-  QQ_API_ROOT,
-  qqRequest
+  sendMediaToGroup
 } = require('../services/messageService');
 const { processBase64Image, getImageInfo } = require('../utils/imageProcessor');
 const { executeInput } = require('../services/localCommandService');
+const { uploadRichMedia } = require('../services/richMediaUpload');
+const { joinPublicUrl } = require('../utils/publicUrl');
 const logger = require('../utils/logger');
 
 const recentGroupMessageIds = new Map();
@@ -134,13 +133,10 @@ async function sendReplyToGroup(responseData, groupOpenid, messageId) {
         logger.info(`图片处理完成: ${imageInfo.width}x${imageInfo.height}, ${imageInfo.format}, ${imageInfo.sizeMB}MB`);
       }
       
-      // 获取绝对URL路径并进行URL编码
-      const serverHost = process.env.SERVER_HOST || 'http://localhost:3000';
-      const encodedFileName = encodeURIComponent(fileName);
-      const imageUrl = `${serverHost}/temp_images/${encodedFileName}`;
-      
-      // 调用QQ API上传图片，获取file_info
-      const fileInfo = await uploadFileForGroup(groupOpenid, imageUrl, 1); // 1表示图片类型
+      const imageUrl = joinPublicUrl(`temp_images/${encodeURIComponent(fileName)}`);
+      logger.info('群聊图片先分片上传再发送', { fileName });
+
+      const fileInfo = await uploadFileForGroup(groupOpenid, imageUrl, 1, imagePath);
       
       // 群聊 msg_type=7 时仅 media 字段生效，文本需作为下一条回复发送。
       if (responseData.message) {
@@ -169,30 +165,13 @@ async function sendReplyToGroup(responseData, groupOpenid, messageId) {
  * @param {number} fileType - 文件类型（1:图片, 2:视频, 3:语音, 4:文件）
  * @returns {Promise<string>} file_info
  */
-async function uploadFileForGroup(groupOpenid, url, fileType) {
+async function uploadFileForGroup(groupOpenid, url, fileType, filePath) {
   try {
-    const accessToken = await getAccessToken();
-    const response = await qqRequest(
-      'POST',
-      `${QQ_API_ROOT}/v2/groups/${groupOpenid}/files`,
-      {
-        file_type: fileType,
-        url: url,
-        srv_send_msg: false
-      },
-      {
-        'Content-Type': 'application/json',
-        'Authorization': `QQBot ${accessToken}`
-      }
-    );
-    
-    if (!response.data || !response.data.file_info) {
-      throw new Error('上传文件失败，未获取到file_info');
-    }
-    
-    logger.info('文件上传成功');
-    return response.data.file_info;
-    
+    return await uploadRichMedia(`/v2/groups/${groupOpenid}/files`, {
+      fileType,
+      filePath,
+      url
+    });
   } catch (error) {
     if (!error?.alreadyLogged) {
       logger.error('上传文件失败', error);

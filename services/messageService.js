@@ -103,6 +103,11 @@ async function qqRequest(method, url, data, headers = {}) {
   if (method !== 'GET' && method !== 'HEAD') {
     axiosConfig.data = data;
   }
+  if (Buffer.isBuffer(data)) {
+    axiosConfig.maxBodyLength = Infinity;
+    axiosConfig.maxContentLength = Infinity;
+    axiosConfig.transformRequest = [(body) => body];
+  }
   if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
     axiosConfig.signal = AbortSignal.timeout(QQ_API_TIMEOUT_MS);
   }
@@ -418,7 +423,8 @@ async function sendMarkdownToChannel(channelId, markdown, eventId = null, msgId 
  */
 async function sendImageToChannel(channelId, imageUrl, content = '', eventId = null, msgId = null) {
   const messageData = {
-    image: imageUrl // 频道API使用image字段直接传URL
+    // 频道不走群聊 file_info，平台按 image URL 自行转存。
+    image: imageUrl
   };
   
   // 如果有文本内容，添加到消息中

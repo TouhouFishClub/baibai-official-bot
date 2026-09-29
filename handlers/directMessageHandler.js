@@ -8,13 +8,12 @@ const path = require('path');
 const {
   sendTextToC2C,
   sendTextToDirectMessage,
-  sendC2CMessage,
-  getAccessToken,
-  QQ_API_ROOT,
-  qqRequest
+  sendC2CMessage
 } = require('../services/messageService');
 const { processBase64Image, getImageInfo } = require('../utils/imageProcessor');
 const { executeInput } = require('../services/localCommandService');
+const { uploadRichMedia } = require('../services/richMediaUpload');
+const { joinPublicUrl } = require('../utils/publicUrl');
 const logger = require('../utils/logger');
 
 /**
@@ -200,15 +199,10 @@ async function sendReplyToC2C(responseData, userOpenid, messageId) {
         console.log(`QQ私信最终图片信息: ${imageInfo.width}x${imageInfo.height}, ${imageInfo.format}, ${imageInfo.sizeMB}MB`);
       }
       
-      // 获取绝对URL路径并进行URL编码
-      const serverHost = process.env.SERVER_HOST || 'http://localhost:3000';
-      const encodedFileName = encodeURIComponent(fileName);
-      const imageUrl = `${serverHost}/temp_images/${encodedFileName}`;
-      
-      logger.debug('QQ私信图片已生成');
-      
-      // 调用QQ API上传图片，获取file_info
-      const fileInfo = await uploadFileForC2C(userOpenid, imageUrl, 1); // 1表示图片类型
+      const imageUrl = joinPublicUrl(`temp_images/${encodeURIComponent(fileName)}`);
+      logger.info('QQ私信图片先分片上传再发送', { fileName });
+
+      const fileInfo = await uploadFileForC2C(userOpenid, imageUrl, 1, imagePath);
       
       // C2C msg_type=7 时仅 media 字段生效，文本作为下一条回复发送。
       if (responseData.message) {
@@ -282,12 +276,8 @@ async function sendReplyToDirectMessage(responseData, guildId, messageId) {
         console.log(`频道私信最终图片信息: ${imageInfo.width}x${imageInfo.height}, ${imageInfo.format}, ${imageInfo.sizeMB}MB`);
       }
       
-      // 获取绝对URL路径并进行URL编码
-      const serverHost = process.env.SERVER_HOST || 'http://localhost:3000';
-      const encodedFileName = encodeURIComponent(fileName);
-      const imageUrl = `${serverHost}/temp_images/${encodedFileName}`;
-      
-      console.log(`频道私信图片URL: ${imageUrl}`);
+      const imageUrl = joinPublicUrl(`temp_images/${encodeURIComponent(fileName)}`);
+      logger.info('频道私信使用公网 image URL', { imageUrl });
       
       // 频道私信使用类似频道的方式发送图片
       if (responseData.message) {
@@ -318,33 +308,13 @@ async function sendReplyToDirectMessage(responseData, guildId, messageId) {
  * @param {number} fileType - 文件类型（1:图片, 2:视频, 3:语音, 4:文件）
  * @returns {Promise<string>} file_info
  */
-async function uploadFileForC2C(userOpenid, url, fileType) {
+async function uploadFileForC2C(userOpenid, url, fileType, filePath) {
   try {
-    // 获取访问令牌
-    const accessToken = await getAccessToken();
-    
-    // 构建上传文件请求 - QQ私信使用用户API
-    const response = await qqRequest(
-      'POST',
-      `${QQ_API_ROOT}/v2/users/${userOpenid}/files`,
-      {
-        file_type: fileType,
-        url: url,
-        srv_send_msg: false
-      },
-      {
-        'Content-Type': 'application/json',
-        'Authorization': `QQBot ${accessToken}`
-      }
-    );
-    
-    if (!response.data || !response.data.file_info) {
-      throw new Error('上传QQ私信文件失败，未获取到file_info: ' + JSON.stringify(response.data));
-    }
-    
-    logger.info('QQ私信文件上传成功');
-    return response.data.file_info;
-    
+    return await uploadRichMedia(`/v2/users/${userOpenid}/files`, {
+      fileType,
+      filePath,
+      url
+    });
   } catch (error) {
     logger.error('上传QQ私信文件失败', error);
     throw error;
