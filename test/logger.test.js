@@ -68,6 +68,36 @@ test('已有群名和成员名时日志带名称和 openid', () => {
   );
 });
 
+test('已有频道名和成员名时日志带名称和 id', () => {
+  const normalLines = [];
+  const originalLog = console.log;
+  console.log = (...args) => normalLines.push(args.join(' '));
+  const originalLevel = process.env.LOG_LEVEL;
+  process.env.LOG_LEVEL = 'info';
+
+  try {
+    logger.message({
+      type: '频道',
+      eventType: 'AT_MESSAGE_CREATE',
+      groupId: '123456789012345678',
+      groupName: '技术交流频道',
+      userId: '2823701233424295228',
+      userName: '频道昵称',
+      content: '/meu 释魂'
+    });
+  } finally {
+    console.log = originalLog;
+    if (originalLevel === undefined) delete process.env.LOG_LEVEL;
+    else process.env.LOG_LEVEL = originalLevel;
+  }
+
+  assert.equal(normalLines.length, 1);
+  assert.match(
+    normalLines[0],
+    /\[频道\]\[AT_MESSAGE_CREATE\]\[技术交流频道\(123456789012345678\)\]\[频道昵称\(2823701233424295228\)\] \/meu 释魂/
+  );
+});
+
 test('错误日志分流并压缩 Axios 错误对象', () => {
   const normalLines = [];
   const errorLines = [];

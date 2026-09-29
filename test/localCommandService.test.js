@@ -47,12 +47,30 @@ test('桥接未配置时数据库命令稳定降级', async () => {
   const result = await executeCommand('mbtv', '', {});
   assert.equal(result.status, 'ok');
   assert.match(result.data.message, /数据库桥接服务暂不可用/);
+});
 
-  const calendar = await executeMessage('测试日历', {
-    groupId: 'group-a',
-    userId: 'user-a'
-  });
-  assert.match(calendar.data.message, /依赖.*数据库/);
+test('未迁移功能和无权写问答只记日志不回复', async () => {
+  const lines = [];
+  const originalLog = console.log;
+  console.log = (...args) => lines.push(args.join(' '));
+  try {
+    const calendar = await executeMessage('测试日历', {
+      groupId: 'group-a',
+      userId: 'user-a'
+    });
+    const denied = await executeMessage('关键词|回答', {
+      groupId: 'group-a',
+      userId: 'normal-user'
+    });
+    assert.equal(calendar.status, 'ok');
+    assert.equal(calendar.data, null);
+    assert.equal(denied.status, 'ok');
+    assert.equal(denied.data, null);
+  } finally {
+    console.log = originalLog;
+  }
+  assert.match(lines.join('\n'), /依赖尚未迁移的数据库/);
+  assert.match(lines.join('\n'), /此功能仅限管理员使用/);
 });
 
 test('QA 按群隔离并限制写权限', async () => {
@@ -60,7 +78,8 @@ test('QA 按群隔离并限制写权限', async () => {
     groupId: 'group-a',
     userId: 'normal-user'
   });
-  assert.equal(denied.data.message, '此功能仅限管理员使用');
+  assert.equal(denied.status, 'ok');
+  assert.equal(denied.data, null);
 
   const created = await executeMessage('关键词|回答', {
     groupId: 'group-a',

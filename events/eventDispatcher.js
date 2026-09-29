@@ -7,6 +7,7 @@ const { handleGroupAtMessage } = require('../handlers/groupMessageHandler');
 const { handleChannelAtMessage } = require('../handlers/channelMessageHandler');
 const { handleC2CMessage, handleDirectMessage } = require('../handlers/directMessageHandler');
 const { observeGroupOpenid } = require('../services/groupInfoService');
+const { observeGuild } = require('../services/guildInfoService');
 const { OP_CODE, EVENT_TYPE } = require('../utils/constants');
 const logger = require('../utils/logger');
 
@@ -54,6 +55,7 @@ async function handleDispatchEvent(payload, res) {
     });
 
     observeGroupOpenid(eventData);
+    observeGuild(eventData);
     
     // 先发送回调确认，避免超时导致的重复推送
     // 返回HTTP回调确认，必须是op: 12的格式

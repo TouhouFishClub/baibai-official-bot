@@ -18,6 +18,7 @@ const searchWhereCn = async (...keywords) => {
   const result = await getBridgeClient().optionsetSearch({ keywords })
   return result.rows || []
 }
+// TODO: 台服/旧出处查询仍会回复用户「暂不可用」，确认后改为静默或其它处理。
 const optionsetWhereCnHandler = (action, nickname, name, level, value, callback) =>
   callback('释放卷出处维护仍为只读，暂不可用')
 const optionsetImage = (info, wheres, directory, callback) =>
@@ -216,6 +217,7 @@ class SearchHandler {
       }
       this._renderWhereSearchResults(rows, callback)
     } catch (_) {
+      // TODO: 国服出处搜索桥接失败时仍会回复用户，确认后改为静默或其它处理。
       callback('释放卷出处桥接服务暂不可用')
     }
   }

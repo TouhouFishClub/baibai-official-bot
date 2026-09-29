@@ -42,7 +42,7 @@ function createService({
   collection,
   memberCollection,
   fetchGroupInfo,
-  fetchGroupMembers,
+  fetchGroupMember,
   refreshMs = 60 * 60 * 1000,
   now
 }) {
@@ -51,7 +51,7 @@ function createService({
     getCollection: async () => collection,
     getMemberCollection: async () => memberCollection || createMemoryCollection(),
     fetchGroupInfo,
-    fetchGroupMembers: fetchGroupMembers || (async () => []),
+    fetchGroupMember: fetchGroupMember || (async () => ({ member_openid: 'skip', username: '忽略' })),
     refreshMs,
     now: now || (() => new Date('2026-09-30T00:00:00+08:00')),
     logger: { warn() {}, debug() {} }
@@ -188,7 +188,7 @@ test('解析 QQ 接口错误码', () => {
   );
 });
 
-test('拉取群资料时一并分页写入群成员', async () => {
+test('收到群 openid 后按发言人拉取成员并入库', async () => {
   const collection = createMemoryCollection();
   const memberCollection = createMemoryCollection();
   const memberCalls = [];
@@ -199,40 +199,39 @@ test('拉取群资料时一并分页写入群成员', async () => {
       group_openid: groupOpenid,
       group_name: '读书分享会'
     }),
-    fetchGroupMembers: async (groupOpenid) => {
-      memberCalls.push(groupOpenid);
-      return [
-        {
-          member_openid: '969942F23E62DF96C38CD1FA36566760',
-          username: '成员名',
-          member_role: 'member',
-          bot: false
-        },
-        {
-          member_openid: 'EC58D87F598C8294A533B9D458DAAF33',
-          username: 'T小不点101',
-          member_role: 'admin'
-        }
-      ];
+    fetchGroupMember: async (groupOpenid, memberOpenid) => {
+      memberCalls.push([groupOpenid, memberOpenid]);
+      return {
+        member_openid: memberOpenid,
+        username: '小明',
+        member_role: 'admin',
+        bot: false,
+        joined_at: '2025-08-20T09:15:00+08:00',
+        union_openid: 'B4C6D8E0F2A4B6C8D0E2F4A6B8C0D2E4'
+      };
     }
   });
 
-  const saved = await service.rememberGroupOpenid('7C8467413F22B6981B448E41DC8F1B5D');
-  assert.deepEqual(memberCalls, ['7C8467413F22B6981B448E41DC8F1B5D']);
-  assert.equal(saved.members_fetched, 2);
+  await service.rememberGroupOpenid('3E5D8A1F7B2C9E4D6A0F1B3C5D7E9F2A', {
+    author: { member_openid: '7A3B9C1D5E2F4A6B8C0D1E3F5A7B9C2D' }
+  });
+  assert.deepEqual(memberCalls, [[
+    '3E5D8A1F7B2C9E4D6A0F1B3C5D7E9F2A',
+    '7A3B9C1D5E2F4A6B8C0D1E3F5A7B9C2D'
+  ]]);
   assert.equal(
     await service.getStoredMemberName(
-      '7C8467413F22B6981B448E41DC8F1B5D',
-      '969942F23E62DF96C38CD1FA36566760'
+      '3E5D8A1F7B2C9E4D6A0F1B3C5D7E9F2A',
+      '7A3B9C1D5E2F4A6B8C0D1E3F5A7B9C2D'
     ),
-    '成员名'
+    '小明'
   );
   assert.deepEqual(
     await service.getLogLabels(
-      '7C8467413F22B6981B448E41DC8F1B5D',
-      '969942F23E62DF96C38CD1FA36566760'
+      '3E5D8A1F7B2C9E4D6A0F1B3C5D7E9F2A',
+      '7A3B9C1D5E2F4A6B8C0D1E3F5A7B9C2D'
     ),
-    { groupName: '读书分享会', userName: '成员名' }
+    { groupName: '读书分享会', userName: '小明' }
   );
 });
 
@@ -246,20 +245,21 @@ test('群成员接口失败不影响群名入库', async () => {
       group_openid: groupOpenid,
       group_name: '还能记下群名'
     }),
-    fetchGroupMembers: async () => {
+    fetchGroupMember: async () => {
       const error = new Error('应用无接口访问权限');
       error.response = { status: 403, data: { code: 11253, message: '应用无接口访问权限' } };
       throw error;
     }
   });
 
-  const saved = await service.rememberGroupOpenid('group-members-denied');
+  const saved = await service.rememberGroupOpenid('group-members-denied', {
+    author: { member_openid: 'member-denied' }
+  });
   assert.equal(saved.group_name, '还能记下群名');
-  assert.match(saved.members_last_error, /11253/);
-  assert.equal(memberCollection.docs.size, 0);
+  assert.match(memberCollection.docs.get('group-members-denied:member-denied').last_error, /11253/);
 });
 
-test('消息里带昵称时会先写入该成员缓存', async () => {
+test('群资料在有效期内仍会按发言人补成员', async () => {
   const collection = createMemoryCollection([{
     _id: 'group-1',
     group_openid: 'group-1',
@@ -267,23 +267,25 @@ test('消息里带昵称时会先写入该成员缓存', async () => {
     fetched_at: new Date('2026-09-30T00:00:00+08:00')
   }]);
   const memberCollection = createMemoryCollection();
-  let memberFetchCount = 0;
+  let groupFetch = 0;
+  let memberFetch = 0;
   const service = createService({
     collection,
     memberCollection,
-    fetchGroupInfo: async () => ({ group_name: '新群名' }),
-    fetchGroupMembers: async () => {
-      memberFetchCount += 1;
-      return [];
+    fetchGroupInfo: async () => {
+      groupFetch += 1;
+      return { group_name: '新群名' };
+    },
+    fetchGroupMember: async (_groupOpenid, memberOpenid) => {
+      memberFetch += 1;
+      return { member_openid: memberOpenid, username: '接口昵称' };
     }
   });
 
   await service.rememberGroupOpenid('group-1', {
-    author: {
-      member_openid: 'member-1',
-      username: '发言昵称'
-    }
+    author: { member_openid: 'member-1', username: '发言昵称' }
   });
-  assert.equal(memberFetchCount, 0);
-  assert.equal(await service.getStoredMemberName('group-1', 'member-1'), '发言昵称');
+  assert.equal(groupFetch, 0);
+  assert.equal(memberFetch, 1);
+  assert.equal(await service.getStoredMemberName('group-1', 'member-1'), '接口昵称');
 });

@@ -8,6 +8,7 @@ const path = require('path');
 const { sendTextToChannel, sendImageToChannel } = require('../services/messageService');
 const { processBase64Image } = require('../utils/imageProcessor');
 const { executeInput } = require('../services/localCommandService');
+const { rememberGuild, getLogLabels } = require('../services/guildInfoService');
 const logger = require('../utils/logger');
 
 /**
@@ -44,17 +45,21 @@ async function handleChannelAtMessage(eventData, eventType = null) {
     trimmedContent = trimmedContent.replace(/<@!\d+>\s*/g, '').trim();
     
     // 记录收到的消息
+    const labels = await getLogLabels(guild_id, author?.id);
+    void rememberGuild(guild_id, { author, member });
     logger.message({
       type: '频道',
       eventType: eventType || 'AT_MESSAGE_CREATE',
-      groupId: channel_id,
+      groupId: guild_id || channel_id,
+      groupName: labels.groupName,
       userId: author?.id,
+      userName: labels.userName,
       content: trimmedContent
     });
     
     const result = await processLocalMessage(trimmedContent, author, member, guild_id);
     if (result && result.status === "ok" && result.data) {
-      await sendReplyToChannel(result.data, channel_id, messageId, author?.id);
+      await sendReplyToChannel(result.data, channel_id, messageId, author?.id, guild_id);
     }
   } catch (error) {
     logger.error('处理频道@消息失败', error.message);
@@ -67,12 +72,15 @@ async function handleChannelAtMessage(eventData, eventType = null) {
  * @param {string} channelId - 频道ID
  * @param {string} messageId - 用户消息ID
  */
-async function sendReplyToChannel(responseData, channelId, messageId, userId = null) {
+async function sendReplyToChannel(responseData, channelId, messageId, userId = null, guildId = null) {
   try {
+    const labels = await getLogLabels(guildId, userId);
     logger.reply({
       type: '频道',
-      groupId: channelId,
+      groupId: guildId || channelId,
+      groupName: labels.groupName,
       userId,
+      userName: labels.userName,
       content: logger.describeReplyPayload(responseData)
     });
 
@@ -163,11 +171,12 @@ function getChannelConfig() {
  */
 async function processLocalMessage(input, author, member, guildId) {
   const channelConfig = getChannelConfig();
+  const labels = await getLogLabels(guildId, author?.id);
   return executeInput(input, {
     userId: author.id,
-    userName: author.username || (member && member.nick) || `QQ-${author.id}`,
+    userName: labels.userName || author.username || (member && member.nick) || `QQ-${author.id}`,
     groupId: channelConfig.channel_exchange_group || guildId || 'global',
-    groupName: channelConfig.channel_name || `频道-${guildId || 'global'}`,
+    groupName: labels.groupName || channelConfig.channel_name || `频道-${guildId || 'global'}`,
     canManageQa: String(author.id) === String(channelConfig.admin_user || '')
   });
 }

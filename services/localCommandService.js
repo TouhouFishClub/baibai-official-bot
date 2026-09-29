@@ -167,6 +167,7 @@ async function executeMessage(content, context = {}) {
         superQuery: normalized.startsWith('超级走私查询')
       })));
     } catch (error) {
+      // TODO: 走私桥接不可用时仍会回复用户，确认后改为静默或其它处理。
       if (error?.name === 'BridgeUnavailableError') {
         return text('走私数据库桥接服务暂不可用');
       }
@@ -182,12 +183,22 @@ async function executeMessage(content, context = {}) {
     /^(菜单|menu)/i.test(normalized) ||
     /^(洛奇来一发|洛奇来十连|洛奇来一单|洛奇来十单|洛奇蛋池)/.test(normalized)
   ) {
-    return text(DATABASE_TODO_MESSAGE);
+    logger.info(DATABASE_TODO_MESSAGE, {
+      groupId: context.groupId,
+      userId: context.userId,
+      content: normalized
+    });
+    return ok(null);
   }
 
   if (normalized.includes('|')) {
     if (!canWriteQa(context)) {
-      return text('此功能仅限管理员使用');
+      logger.info('此功能仅限管理员使用', {
+        groupId: context.groupId,
+        userId: context.userId,
+        content: normalized
+      });
+      return ok(null);
     }
     const [key, ...answerParts] = normalized.split('|');
     const result = await setAnswer({
@@ -281,6 +292,7 @@ async function executeCommand(command, content, context = {}) {
 
     return { status: 'error', message: '不支持的命令' };
   } catch (error) {
+    // TODO: 电视/统计/mblogs 桥接不可用时仍会回复用户，确认后改为静默或其它处理。
     if (error?.name === 'BridgeUnavailableError') {
       return text('数据库桥接服务暂不可用，请稍后再试');
     }
