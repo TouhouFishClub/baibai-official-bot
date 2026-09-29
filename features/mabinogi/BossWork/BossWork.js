@@ -2,6 +2,8 @@ const path = require('path')
 const { IMAGE_DATA } = require(path.join(__dirname, '..', '..', '..', 'baibaiConfigs.js'))
 const { getBrowserLaunchOptions } = require('../../../utils/browserOptions')
 const { htmlToImage } = require('../../../utils/htmlToImage')
+const { fileToDataUri } = require('../../../utils/fileDataUri')
+const { getCjkFontFaceCss } = require('../../../utils/cjkFont')
 const BossList = {
 	BlackDragon: {
 		genMinute: 57,
@@ -315,6 +317,9 @@ const BossWork = (qq, group, callback) => {
 	// drawTxtImage('', str, callback, {color: 'black', font: 'STXIHEI.TTF'})
 }
 
+const CORP_BOLD = fileToDataUri(path.join(__dirname, '..', '..', '..', 'fonts', 'Corp-Bold.otf'))
+const BossImageParser = filename => fileToDataUri(path.join(__dirname, 'img', filename))
+
 const RenderWorkTimeLine = (callback) => {
 
 	const now = new Date()
@@ -324,15 +329,21 @@ const RenderWorkTimeLine = (callback) => {
 
 	htmlToImage({
 		output,
+		skipCjkInject: true,
 		puppeteerArgs: getBrowserLaunchOptions(),
 		html: `
 <html>
   <head>
     <title></title>
     <style>
+    	@font-face {
+        font-family: 'Corp_Bold';
+        src: url(${CORP_BOLD}) format('opentype');
+      }
+      ${getCjkFontFaceCss()}
     	body {
     		width: 1010px;
-			font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+			font-family: BaibaiCJK, "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
     	}
     	.main-container {
     		padding: 30px;
@@ -361,10 +372,10 @@ const RenderWorkTimeLine = (callback) => {
     		/* border-top: 1px solid #666; */
     	}
     	.main-container .time-line .boss-info{
-    		width: 217px;
+    		width: 137px;
     		height: 60px;
     		position: relative;
-    		padding-left: 10px;
+    		padding-left: 90px;
     		padding-right: 3px;
     		display: flex;
     		flex-direction: row;
@@ -401,7 +412,7 @@ const RenderWorkTimeLine = (callback) => {
     	.main-container .time-line .boss-info .boss-time .time .desc{
     		font-size: 22px;
     		line-height: 26px;
-    		font-weight: 700;
+    		font-family: Corp_Bold, "Microsoft YaHei", sans-serif;
     		flex-shrink: 0;
     	}
     	.main-container .time-line .boss-info .boss-time .time.current{
@@ -425,7 +436,7 @@ const RenderWorkTimeLine = (callback) => {
     	.main-container .time-line .boss-info .boss-count .text{
     		font-size: 32px;
     		line-height: 36px;
-    		font-weight: 700;
+    		font-family: Corp_Bold, "Microsoft YaHei", sans-serif;
     	}
     	.main-container .time-line .boss-info .boss-cutline{
 				width: 3px;
@@ -475,6 +486,7 @@ const RenderWorkTimeLine = (callback) => {
 			return `
 					<div class="time-line">
 						<div class="boss-info" style="background-color: ${bossInfo.monsterColor}; color: ${bossInfo.monsterInfoColor || '#333'}">
+							<img src="${BossImageParser(bossInfo.monsterImage)}" class="boss-image"/>
 							<div class="boss-time">
 								<div class="time current">
 									<div class="desc">

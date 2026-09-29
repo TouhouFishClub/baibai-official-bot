@@ -805,6 +805,7 @@ async function renderMblogsList(option) {
 module.exports = {
   renderMblogsList,
   buildHtml,
+  getArcanaArt,
   getDpsTone,
   normalizeRankingVisibility,
   getDefaultCharacterName,

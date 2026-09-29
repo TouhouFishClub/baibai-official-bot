@@ -83,3 +83,10 @@ test('mblogs 渲染沿用原版卡片榜', () => {
   assert.match(html, /DAMAGE \/ SEC/);
   assert.match(html, /ZZZDisplay/);
 });
+
+test('mblogs 职业立绘已从原版迁移', () => {
+  const { getArcanaArt } = require('../features/mabinogi/logs/renderMblogsList');
+  for (const name of ['元素骑士', '黑魔导士', '流星射手', '圣盾骑士', '爆裂骑士枪']) {
+    assert.match(getArcanaArt(name), /^data:image\/png;base64,/);
+  }
+});
