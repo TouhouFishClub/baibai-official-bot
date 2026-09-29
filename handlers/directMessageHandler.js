@@ -12,7 +12,7 @@ const {
   sendC2CMessage,
   getAccessToken,
   QQ_API_ROOT,
-  QQ_API_TIMEOUT_MS
+  qqRequestConfig
 } = require('../services/messageService');
 const { processBase64Image, getImageInfo } = require('../utils/imageProcessor');
 const { executeInput } = require('../services/localCommandService');
@@ -332,13 +332,10 @@ async function uploadFileForC2C(userOpenid, url, fileType) {
         url: url,
         srv_send_msg: false // 不直接发送，仅获取file_info
       },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `QQBot ${accessToken}`
-        },
-        timeout: QQ_API_TIMEOUT_MS
-      }
+      qqRequestConfig({
+        'Content-Type': 'application/json',
+        'Authorization': `QQBot ${accessToken}`
+      })
     );
     
     if (!response.data || !response.data.file_info) {

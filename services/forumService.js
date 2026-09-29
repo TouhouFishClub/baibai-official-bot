@@ -7,7 +7,7 @@ const axios = require('axios');
 const {
   getAccessToken,
   QQ_API_ROOT: QQ_CHANNEL_API_ROOT,
-  QQ_API_TIMEOUT_MS
+  qqRequestConfig
 } = require('./messageService');
 
 /**
@@ -45,13 +45,10 @@ async function publishThread(channelId, title, content, format = 2) {
     const response = await axios.put(
       apiUrl,
       requestData,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `QQBot ${accessToken}`
-        },
-        timeout: QQ_API_TIMEOUT_MS
-      }
+      qqRequestConfig({
+        'Content-Type': 'application/json',
+        'Authorization': `QQBot ${accessToken}`
+      })
     );
     
     console.log('发帖请求已成功提交');
@@ -114,12 +111,9 @@ async function getGuildsList() {
     
     const response = await axios.get(
       `${QQ_CHANNEL_API_ROOT}/users/@me/guilds`,
-      {
-        headers: {
-          'Authorization': `QQBot ${accessToken}`
-        },
-        timeout: QQ_API_TIMEOUT_MS
-      }
+      qqRequestConfig({
+        'Authorization': `QQBot ${accessToken}`
+      })
     );
     
     console.log('频道服务器列表获取成功');
@@ -147,12 +141,9 @@ async function getChannelsList(guildId) {
     
     const response = await axios.get(
       `${QQ_CHANNEL_API_ROOT}/guilds/${guildId}/channels`,
-      {
-        headers: {
-          'Authorization': `QQBot ${accessToken}`
-        },
-        timeout: QQ_API_TIMEOUT_MS
-      }
+      qqRequestConfig({
+        'Authorization': `QQBot ${accessToken}`
+      })
     );
     
     console.log('子频道列表获取成功');
@@ -180,12 +171,9 @@ async function getChannelInfo(channelId) {
     
     const response = await axios.get(
       `${QQ_CHANNEL_API_ROOT}/channels/${channelId}`,
-      {
-        headers: {
-          'Authorization': `QQBot ${accessToken}`
-        },
-        timeout: QQ_API_TIMEOUT_MS
-      }
+      qqRequestConfig({
+        'Authorization': `QQBot ${accessToken}`
+      })
     );
     
     console.log('频道信息获取成功');

@@ -3,8 +3,19 @@
  * 负责发送各类消息到QQ平台
  */
 
+const dns = require('dns');
+const https = require('https');
 const axios = require('axios');
 const logger = require('../utils/logger');
+
+if (typeof dns.setDefaultResultOrder === 'function') {
+  dns.setDefaultResultOrder('ipv4first');
+}
+
+const qqHttpsAgent = new https.Agent({
+  family: 4,
+  keepAlive: true
+});
 
 // 默认沿用已验证可通的旧域名；新文档域名可通过环境变量覆盖。
 const QQ_API_ROOT = String(process.env.QQ_API_ROOT || 'https://api.sgroup.qq.com').replace(/\/+$/, '');
@@ -18,6 +29,15 @@ const QQ_API_TIMEOUT_MS = Number.isFinite(configuredTimeout) && configuredTimeou
 let cachedAccessToken = null;
 let accessTokenExpiresAt = 0;
 let accessTokenRequest = null;
+
+function qqRequestConfig(headers = {}) {
+  return {
+    timeout: QQ_API_TIMEOUT_MS,
+    family: 4,
+    httpsAgent: qqHttpsAgent,
+    headers
+  };
+}
 
 function logRequestError(message, error) {
   if (!error?.alreadyLogged) {
@@ -73,12 +93,9 @@ async function getAccessToken() {
         appId: appId,
         clientSecret: appSecret
       },
-      {
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        timeout: QQ_API_TIMEOUT_MS
-      }
+      qqRequestConfig({
+        'Content-Type': 'application/json'
+      })
     );
     
     if (!tokenResponse.data || !tokenResponse.data.access_token) {
@@ -137,13 +154,10 @@ async function sendGroupMessage(groupOpenid, message, eventId = null, msgId = nu
     const response = await axios.post(
       requestUrl,
       requestData,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `QQBot ${accessToken}`
-        },
-        timeout: QQ_API_TIMEOUT_MS
-      }
+      qqRequestConfig({
+        'Content-Type': 'application/json',
+        'Authorization': `QQBot ${accessToken}`
+      })
     );
     
     logger.info('群聊消息发送成功');
@@ -260,13 +274,10 @@ async function sendChannelMessage(channelId, messageData, eventId = null, msgId 
     const response = await axios.post(
       `${QQ_API_ROOT}/channels/${channelId}/messages`,
       requestData,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `QQBot ${accessToken}`
-        },
-        timeout: QQ_API_TIMEOUT_MS
-      }
+      qqRequestConfig({
+        'Content-Type': 'application/json',
+        'Authorization': `QQBot ${accessToken}`
+      })
     );
     
     logger.info('频道消息发送成功');
@@ -389,13 +400,10 @@ async function sendC2CMessage(userOpenid, message, eventId = null, msgId = null,
     const response = await axios.post(
       `${QQ_API_ROOT}/v2/users/${userOpenid}/messages`,
       requestData,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `QQBot ${accessToken}`
-        },
-        timeout: QQ_API_TIMEOUT_MS
-      }
+      qqRequestConfig({
+        'Content-Type': 'application/json',
+        'Authorization': `QQBot ${accessToken}`
+      })
     );
     
     logger.info('QQ单聊消息发送成功');
@@ -458,13 +466,10 @@ async function sendDirectMessage(guildId, messageData, eventId = null, msgId = n
     const response = await axios.post(
       `${QQ_API_ROOT}/dms/${guildId}/messages`,
       requestData,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `QQBot ${accessToken}`
-        },
-        timeout: QQ_API_TIMEOUT_MS
-      }
+      qqRequestConfig({
+        'Content-Type': 'application/json',
+        'Authorization': `QQBot ${accessToken}`
+      })
     );
     
     logger.info('频道私信消息发送成功');
@@ -512,5 +517,6 @@ module.exports = {
   getAccessToken,
   QQ_API_ROOT,
   QQ_API_TIMEOUT_MS,
+  qqRequestConfig,
   validateTypedMessage
 }; 
