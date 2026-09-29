@@ -29,12 +29,16 @@ test('统一解析有斜杠和无斜杠命令', () => {
     command: null,
     content: '普通问答'
   });
+  assert.deepEqual(parseCommand('mblogs 布里列赫'), {
+    command: 'mblogs',
+    content: '布里列赫'
+  });
 });
 
-test('数据库命令返回稳定占位回复', async () => {
+test('桥接未配置时数据库命令稳定降级', async () => {
   const result = await executeCommand('mbtv', '', {});
   assert.equal(result.status, 'ok');
-  assert.match(result.data.message, /依赖.*数据库/);
+  assert.match(result.data.message, /数据库桥接服务暂不可用/);
 
   const calendar = await executeMessage('测试日历', {
     groupId: 'group-a',

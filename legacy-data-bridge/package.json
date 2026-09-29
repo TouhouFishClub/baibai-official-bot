@@ -1,0 +1,23 @@
+{
+  "name": "baibai-legacy-data-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "老服务器只读数据库桥接服务",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test",
+    "check": "node --check src/index.js && node --check src/repositories/queryRepository.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^4.22.3",
+    "mongodb": "^6.20.0"
+  },
+  "devDependencies": {
+    "supertest": "^7.1.4"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

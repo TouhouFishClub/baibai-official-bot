@@ -4,7 +4,7 @@ const logger = require('../utils/logger');
 const { normalizeModuleResult } = require('../utils/cqResultAdapter');
 const { getAnswer, setAnswer } = require('./qaStore');
 
-const COMMAND_PREFIXES = ['mbi', 'mbd', 'opt', 'meu', 'mbtv', 'mbcd'];
+const COMMAND_PREFIXES = ['mblogs', 'mbi', 'mbd', 'opt', 'meu', 'mbtv', 'mbcd'];
 const DATABASE_TODO_MESSAGE = '该功能依赖尚未迁移的数据库，暂不可用。';
 const MODULE_TIMEOUT_MS = Number(process.env.LOCAL_COMMAND_TIMEOUT_MS || 120000);
 
@@ -160,14 +160,25 @@ async function executeMessage(content, context = {}) {
   if (normalized.endsWith('吃什么')) {
     return text(whatToEat(normalized.slice(0, -3)));
   }
+  if (/^(走私查询|超级走私查询)/.test(normalized)) {
+    try {
+      const { querySmuggler } = require('../features/mabinogi/remoteDataFeatures');
+      return ok(normalizeModuleResult(await querySmuggler()));
+    } catch (error) {
+      if (error?.name === 'BridgeUnavailableError') {
+        return text('走私数据库桥接服务暂不可用');
+      }
+      logger.error('走私查询桥接失败', error);
+      return text('走私数据库桥接服务暂不可用');
+    }
+  }
 
-  // TODO(database-migration): calendar/menu/gacha/smuggler 仍依赖原 Mongo 数据。
+  // TODO(database-migration): calendar/menu/gacha 仍依赖原 Mongo 数据。
   if (
     /^(日历设置|日历修改|选择日历|日历删除|选择删除)/.test(normalized) ||
     normalized.endsWith('日历') ||
     /^(菜单|menu)/i.test(normalized) ||
-    /^(洛奇来一发|洛奇来十连|洛奇来一单|洛奇来十单|洛奇蛋池)/.test(normalized) ||
-    /^(走私查询|超级走私查询)/.test(normalized)
+    /^(洛奇来一发|洛奇来十连|洛奇来一单|洛奇来十单|洛奇蛋池)/.test(normalized)
   ) {
     return text(DATABASE_TODO_MESSAGE);
   }
@@ -213,7 +224,7 @@ async function executeCommand(command, content, context = {}) {
   }
   logger.command(normalizedCommand, normalizedContent);
 
-  if (!normalizedContent && !['mbtv', 'mbcd'].includes(normalizedCommand)) {
+  if (!normalizedContent && !['mbtv', 'mbcd', 'mblogs'].includes(normalizedCommand)) {
     return text('请提供查询内容');
   }
 
@@ -248,13 +259,23 @@ async function executeCommand(command, content, context = {}) {
     }
 
     if (normalizedCommand === 'mbtv' || normalizedCommand === 'mbcd') {
-      // TODO(database-migration): Television 依赖 Mongo/MySQL 实时数据。
-      return text(DATABASE_TODO_MESSAGE);
+      const { queryTelevision } = require('../features/mabinogi/remoteDataFeatures');
+      return ok(normalizeModuleResult(
+        await queryTelevision(normalizedCommand, normalizedContent, context)
+      ));
+    }
+
+    if (normalizedCommand === 'mblogs') {
+      const { queryMblogs } = require('../features/mabinogi/remoteDataFeatures');
+      return ok(normalizeModuleResult(await queryMblogs(normalizedContent)));
     }
 
     return { status: 'error', message: '不支持的命令' };
   } catch (error) {
-    logger.error(`本地命令失败 (${normalizedCommand})`, error.message);
+    if (error?.name === 'BridgeUnavailableError') {
+      return text('数据库桥接服务暂不可用，请稍后再试');
+    }
+    logger.error(`本地命令失败 (${normalizedCommand})`, error);
     return text('本地功能处理失败，请稍后再试');
   }
 }

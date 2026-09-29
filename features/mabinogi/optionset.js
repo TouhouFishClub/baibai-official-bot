@@ -2,13 +2,24 @@ const _ = require('lodash')
 const path = require('path')
 const formatOptionset = require(path.join(__dirname, '/tools/formatOptionset'))
 const { optionsetHtmlImage } = require('./tools/optionsetHtmlImage')
+const { getBridgeClient } = require('../../services/legacyDataBridgeClient')
 
-// TODO(database-migration): 原国服出处、出处反查和管理员维护依赖 MongoDB。
+// 台服出处抓取未迁移；国服出处通过老服务器只读桥接查询。
 const optionsetWhere = async () => []
-const optionsetWhereCn = async () => []
-const searchWhereCn = async () => []
+const optionsetWhereCn = async (name, level) => {
+  try {
+    const result = await getBridgeClient().optionsetWhere({ name, level })
+    return result.rows || []
+  } catch (_) {
+    return []
+  }
+}
+const searchWhereCn = async (...keywords) => {
+  const result = await getBridgeClient().optionsetSearch({ keywords })
+  return result.rows || []
+}
 const optionsetWhereCnHandler = (action, nickname, name, level, value, callback) =>
-  callback('释放卷出处维护依赖数据库，暂不可用')
+  callback('释放卷出处维护仍为只读，暂不可用')
 const optionsetImage = (info, wheres, directory, callback) =>
   optionsetHtmlImage(info, wheres, callback)
 const drawTxtImage = (title, body, callback) => callback(`${title}\n${body}`)
@@ -192,7 +203,21 @@ class SearchHandler {
   }
 
   async _handleWhereSearch(ctx, callback) {
-    callback('释放卷出处查询依赖数据库，暂不可用')
+    const keywords = ctx.slice(1).trim().replace(/[， ]/g, ',').split(',').filter(Boolean)
+    if (!keywords.length) {
+      callback('请输入出处关键词，例如：optw 伦达')
+      return
+    }
+    try {
+      const rows = await searchWhereCn(...keywords)
+      if (!rows.length) {
+        callback('未找到符合条件的释放卷出处')
+        return
+      }
+      this._renderWhereSearchResults(rows, callback)
+    } catch (_) {
+      callback('释放卷出处桥接服务暂不可用')
+    }
   }
 
   _renderWhereSearchResults(searchData, callback) {

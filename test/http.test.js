@@ -18,9 +18,10 @@ test('健康状态与本地 OpenAPI 可访问', async () => {
 
   const openapi = await request(app).get('/openapi').expect(200);
   assert.equal(openapi.body.status, 'ok');
+  assert.ok(openapi.body.commands.includes('mblogs'));
 
   const deferred = await request(app).get('/openapi/mbcd').expect(200);
-  assert.match(deferred.body.data.message, /依赖.*数据库/);
+  assert.match(deferred.body.data.message, /数据库桥接服务暂不可用/);
 
   await request(app).get('/openapi/uni?content=test').expect(404);
 });

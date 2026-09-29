@@ -8,7 +8,7 @@ QQ 官方机器人服务，包含：
 - 本地洛奇查询：`mbi`、`mbd`、`opt`、`meu`
 - 本地 JSON 关键词问答及部分无数据库通用命令
 
-本项目不再请求旧版 bot 的 OpenAPI，也不需要 MongoDB 才能启动。尚未迁移的数据库功能见 [TODO.md](TODO.md)。
+本项目不再请求旧版 bot 的 OpenAPI，也不需要 MongoDB 才能启动。需要旧数据库数据的只读功能通过独立加密桥接服务获取；桥接未配置或不可用时主服务仍可启动。
 
 ## 环境要求
 
@@ -35,7 +35,7 @@ npm start
 - `GET /admin`：管理页面
 - `/put/*`：频道文章
 - `/auto-push/*`：自动推送
-- `/openapi/{mbi,mbd,opt,meu,mbtv,mbcd}`：具名命令兼容接口
+- `/openapi/{mbi,mbd,opt,meu,mbtv,mbcd,mblogs}`：具名命令兼容接口
 
 消息 handler 直接把普通消息交给本地分发器，具名命令才进入对应命令处理器；不再存在旧版 `uni` 通用接口。
 
@@ -46,11 +46,35 @@ npm start
 - `opt <关键词>`：释放卷属性
 - `meu <关键词>`：装备升级
 - `boss` / `bosswork` / `boss工作表`：Boss 刷新时间表
+- `mbtv [关键词]` / `mbcd [关键词]`：旧数据库电视记录
+- `optw <出处关键词>`：释放卷国服出处反查
+- `mblogs [角色/副本/Boss]`：公开 DPS 排行
+- `走私查询` / `超级走私查询`：走私观测和预测
 - 其他文本：QA 查询或内置本地功能
 - `关键词|回答`：管理员添加/更新 QA
 - `关键词|`：管理员删除 QA
 
 QA 管理员来自 `QA_WRITE_USER_IDS`、`config/channel.json` 的 `admin_user`，或 `config/groups.json` 中对应群的 `admin_users`。
+
+## 旧数据库桥接
+
+老服务器只需部署 [`legacy-data-bridge/`](legacy-data-bridge/) 目录。它使用 MongoDB 只读账号并返回结构化数据，筛选结果的展示和图片生成仍在新服务器完成。
+
+在两台服务器分别配置相同的 32 字节 Base64 密钥：
+
+```bash
+openssl rand -base64 32
+```
+
+新服务器 `.env`：
+
+```dotenv
+DATABASE_BRIDGE_URL=https://old-server.example.com
+DATABASE_BRIDGE_SECRET=<相同的Base64密钥>
+DATABASE_BRIDGE_TIMEOUT_MS=10000
+```
+
+老服务器部署和反向代理要求见 [`legacy-data-bridge/README.md`](legacy-data-bridge/README.md)。桥接仅恢复查询能力，不接管 mabiPusher、DPS 上传和走私采集。
 
 ## 开发验证
 
