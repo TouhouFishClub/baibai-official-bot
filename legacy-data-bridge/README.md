@@ -21,11 +21,18 @@ bash run.sh
 
 `run.sh` 会执行 `npm ci --omit=dev`，并复用老服务器上原项目已经能够调用的 `forever` 命令，不需要安装 PM2 或其他全局包。重复执行脚本会先停止同名进程再按最新代码启动。
 
-常用管理命令：
+日常启停：
+
+```bash
+bash run.sh       # 安装依赖并启动
+bash restart.sh   # 不重装依赖，按当前代码重启
+bash stop.sh      # 停止
+```
+
+常用排查命令：
 
 ```bash
 forever list
-forever stop baibai-legacy-data-bridge
 tail -f out.log
 tail -f err.log
 ```
