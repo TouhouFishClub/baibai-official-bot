@@ -17,7 +17,9 @@ const {
 } = require('./mongo');
 const {
   parseQqApiError,
-  shouldRefreshGroupInfo
+  shouldRefreshGroupInfo,
+  shouldRefreshMemberInfo,
+  resolveMemberRefreshMs
 } = require('./groupInfoService');
 
 const DEFAULT_COLLECTION = 'qq_guilds';
@@ -103,6 +105,9 @@ function createGuildInfoService(options = {}) {
   const inFlight = new Map();
   const now = options.now || (() => new Date());
   const refreshMs = resolveRefreshMs(options.refreshMs);
+  const memberRefreshMs = resolveMemberRefreshMs(
+    options.memberRefreshMs ?? process.env.QQ_GUILD_MEMBER_INFO_REFRESH_MS
+  );
   const collectionName = resolveCollectionName(options.collectionName);
   const memberCollectionName = resolveMemberCollectionName(options.memberCollectionName);
   const configured = options.isConfigured || isMongoConfigured;
@@ -176,6 +181,7 @@ function createGuildInfoService(options = {}) {
     const collection = await getMemberCollection();
     if (!collection) return;
     const username = resolveGuildMemberName(author, member);
+    const existing = await collection.findOne({ _id: memberDocId(guildId, userId) });
     const update = {
       guild_id: guildId,
       user_id: userId,
@@ -183,6 +189,7 @@ function createGuildInfoService(options = {}) {
       updated_at: seenAt
     };
     if (username) update.username = username;
+    if (username && !existing?.fetched_at) update.fetched_at = seenAt;
     await collection.updateOne(
       { _id: memberDocId(guildId, userId) },
       { $set: update },
@@ -249,7 +256,7 @@ function createGuildInfoService(options = {}) {
       const collection = await getMemberCollection();
       if (!collection) return null;
       const existing = await collection.findOne({ _id: memberDocId(guildId, userId) });
-      if (!shouldRefreshGroupInfo(existing, seenAt, refreshMs)) {
+      if (!shouldRefreshMemberInfo(existing, seenAt, memberRefreshMs)) {
         return existing;
       }
       try {

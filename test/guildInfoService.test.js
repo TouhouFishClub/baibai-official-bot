@@ -29,6 +29,7 @@ function createService({
   fetchGuild,
   fetchGuildMember,
   refreshMs = 60 * 60 * 1000,
+  memberRefreshMs,
   now
 }) {
   return createGuildInfoService({
@@ -38,6 +39,7 @@ function createService({
     fetchGuild,
     fetchGuildMember: fetchGuildMember || (async () => ({ user: { id: 'u1', username: '忽略' } })),
     refreshMs,
+    memberRefreshMs,
     now: now || (() => new Date('2026-09-30T00:00:00+08:00')),
     logger: { warn() {}, debug() {} }
   });
@@ -212,6 +214,67 @@ test('频道未授权 11264 只记 debug 不记 warn', async () => {
 
   await service.rememberGuild('guild-unauth', { author: { id: 'u4', username: '事件昵称' } });
   assert.equal(logs.warn.length, 0);
-  assert.equal(logs.debug.length, 2);
+  assert.equal(logs.debug.length, 1);
   assert.equal(await service.getStoredMemberName('guild-unauth', 'u4'), '事件昵称');
+});
+
+test('事件里已有昵称时不请求频道成员接口', async () => {
+  const collection = createMemoryCollection();
+  const memberCollection = createMemoryCollection();
+  let memberFetch = 0;
+  const service = createService({
+    collection,
+    memberCollection,
+    fetchGuild: async (guildId) => ({ id: guildId, name: '技术交流频道' }),
+    fetchGuildMember: async () => {
+      memberFetch += 1;
+      throw new Error('不应请求');
+    }
+  });
+
+  await service.rememberGuild('guild-named', {
+    author: { id: 'u5', username: '频道昵称' }
+  });
+  assert.equal(memberFetch, 0);
+  assert.equal(await service.getStoredMemberName('guild-named', 'u5'), '频道昵称');
+});
+
+test('频道成员冷却从上次更新起算，中间发言不会后延一天', async () => {
+  let current = new Date('2026-09-30T00:00:00+08:00');
+  const memberCollection = createMemoryCollection();
+  let memberFetch = 0;
+  const service = createService({
+    collection: createMemoryCollection(),
+    memberCollection,
+    memberRefreshMs: 24 * 60 * 60 * 1000,
+    now: () => current,
+    fetchGuild: async (guildId) => ({ id: guildId, name: '测试频道' }),
+    fetchGuildMember: async () => {
+      memberFetch += 1;
+      const error = new Error('频道未对机器人未授权');
+      error.response = { status: 403, data: { code: 11264, message: '频道未对机器人未授权' } };
+      throw error;
+    }
+  });
+
+  await service.rememberGuild('g1', {
+    author: { id: 'u1', username: '频道昵称' }
+  });
+  assert.equal(memberFetch, 0);
+
+  current = new Date('2026-09-30T12:00:00+08:00');
+  await service.rememberGuild('g1', {
+    author: { id: 'u1', username: '频道昵称' }
+  });
+  assert.equal(memberFetch, 0);
+  assert.equal(
+    memberCollection.docs.get('g1:u1').fetched_at.getTime(),
+    new Date('2026-09-30T00:00:00+08:00').getTime()
+  );
+
+  current = new Date('2026-10-01T00:00:01+08:00');
+  await service.rememberGuild('g1', {
+    author: { id: 'u1', username: '频道昵称' }
+  });
+  assert.equal(memberFetch, 1);
 });

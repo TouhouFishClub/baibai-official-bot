@@ -421,6 +421,7 @@ module.exports = {
   createGroupInfoService,
   shouldRefreshGroupInfo,
   shouldRefreshMemberInfo,
+  resolveMemberRefreshMs,
   fetchGroupInfoFromQq,
   fetchGroupMemberFromQq,
   parseQqApiError,
