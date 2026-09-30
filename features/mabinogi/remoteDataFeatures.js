@@ -1,6 +1,7 @@
 const path = require('path');
 const { IMAGE_DATA } = require('../../baibaiConfigs');
 const { getBridgeClient } = require('../../services/legacyDataBridgeClient');
+const { resolveAndRememberUserServer } = require('../../services/userServerService');
 const { render } = require('./Television/render');
 const { parseMbtvsArgs, renderStatsImage: renderMbtvStatsImage } = require('./Television/mbtvStats');
 const { parseMbcdsArgs, renderStatsImage: renderMbcdStatsImage } = require('./Television/mbcdStats');
@@ -31,9 +32,11 @@ async function renderLegacyTable({ fileName, title, description, columns, rows }
 }
 
 async function queryTelevision(kind, content, context = {}) {
+  const { server, filter } = await resolveAndRememberUserServer(context.userId, content);
   const data = await getBridgeClient().television(kind, {
-    content,
+    content: filter,
     userId: context.userId,
+    server,
     limit: 20
   });
   if (!data.rows.length) return '未找到符合条件的记录';

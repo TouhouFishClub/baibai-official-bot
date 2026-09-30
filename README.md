@@ -45,7 +45,7 @@ npm start
 - `opt <关键词>`：释放卷属性
 - `meu <关键词>`：装备升级
 - `boss` / `bosswork` / `boss工作表`：Boss 刷新时间表
-- `mbtv [关键词]` / `mbcd [关键词]` / `mbzz [关键词]`：出货、抽蛋、装备制造记录
+- `mbtv [服务器] [关键词]` / `mbcd` / `mbzz`：出货、抽蛋、装备制造记录；可用 `猫服`/`伊鲁夏`/`ylx`/`亚特`/`yt` 切换并按 openid 记住服务器
 - `mbtvs` / `mbcds` / `mbzzs`：对应统计图
 - `optw <出处关键词>`：释放卷国服出处反查
 - `mblogs [角色/副本/Boss]`：公开 DPS 排行
