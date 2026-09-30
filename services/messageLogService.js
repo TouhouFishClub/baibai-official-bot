@@ -15,9 +15,28 @@ const MAX_CONTENT_LENGTH = 16_000;
 const SELF_USER_ID = '10000';
 const SELF_USER_NAME = '百百';
 const SEND_EVENT_TYPE = 'SEND_MESSAGE';
+const CHANNEL_TYPES = {
+  群: 'group',
+  私聊: 'c2c',
+  频道: 'channel',
+  频道私信: 'dm',
+  group: 'group',
+  c2c: 'c2c',
+  channel: 'channel',
+  dm: 'dm'
+};
+const ALLOWED_CHANNEL_TYPES = new Set(['c2c', 'group', 'channel', 'dm']);
 
 function resolveCollectionName(value = process.env.MONGODB_MESSAGE_COLLECTION) {
   return String(value || DEFAULT_COLLECTION).trim() || DEFAULT_COLLECTION;
+}
+
+function resolveChannelType(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const mapped = CHANNEL_TYPES[raw] || CHANNEL_TYPES[raw.toLowerCase()];
+  if (ALLOWED_CHANNEL_TYPES.has(mapped)) return mapped;
+  return null;
 }
 
 function trimOrNull(value) {
@@ -54,7 +73,7 @@ function buildMessageDoc(payload = {}, now = () => new Date()) {
   const time = resolveTime(payload, now);
   const isSelf = Boolean(payload.isSelf);
   const doc = {
-    type: trimOrNull(payload.type),
+    type: resolveChannelType(payload.type),
     eventType: trimOrNull(payload.eventType) || (isSelf ? SEND_EVENT_TYPE : null),
     sessionName: trimOrNull(payload.groupName || payload.sessionName),
     sessionId: trimOrNull(payload.groupId || payload.sessionId),
@@ -148,9 +167,12 @@ module.exports = {
   MAX_CONTENT_LENGTH,
   SELF_USER_ID,
   SELF_USER_NAME,
+  CHANNEL_TYPES,
+  ALLOWED_CHANNEL_TYPES,
   SEND_EVENT_TYPE,
   createMessageLogService,
   buildMessageDoc,
+  resolveChannelType,
   logIncoming: defaultService.logIncoming,
   logOutgoing: defaultService.logOutgoing,
   recordMessage: defaultService.recordMessage
