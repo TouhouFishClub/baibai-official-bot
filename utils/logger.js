@@ -246,7 +246,7 @@ function message({ type, eventType, groupId, groupName, userId, userName, conten
   log('INFO', formatTrafficLine({ type, eventType, groupId, groupName, userId, userName, content }));
 }
 
-function reply({ type, groupId, groupName, userId, userName, content, eventType = '发送' } = {}) {
+function reply({ type, groupId, groupName, userId, userName, content, eventType = 'SEND_MESSAGE' } = {}) {
   log('INFO', formatTrafficLine({ type, eventType, groupId, groupName, userId, userName, content }));
 }
 

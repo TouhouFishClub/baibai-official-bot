@@ -23,6 +23,7 @@ function collectionName(envKey, fallback) {
 function resolveIndexSpecs() {
   const groupMembers = collectionName('MONGODB_GROUP_MEMBER_COLLECTION', 'qq_group_members');
   const users = collectionName('MONGODB_USER_COLLECTION', 'qq_users');
+  const messages = collectionName('MONGODB_MESSAGE_COLLECTION', 'qq_messages');
   return [
     {
       collection: groupMembers,
@@ -38,6 +39,21 @@ function resolveIndexSpecs() {
       collection: users,
       keys: { union_openid: 1 },
       options: { name: 'union_openid', sparse: true }
+    },
+    {
+      collection: messages,
+      keys: { sessionId: 1, ts: -1 },
+      options: { name: 'session_ts' }
+    },
+    {
+      collection: messages,
+      keys: { userId: 1, ts: -1 },
+      options: { name: 'user_ts' }
+    },
+    {
+      collection: messages,
+      keys: { messageId: 1 },
+      options: { name: 'message_id', unique: true, sparse: true }
     }
   ];
 }

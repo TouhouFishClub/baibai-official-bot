@@ -10,6 +10,7 @@ const { processBase64Image } = require('../utils/imageProcessor');
 const { executeInput } = require('../services/localCommandService');
 const { rememberGuild, getLogLabels } = require('../services/guildInfoService');
 const logger = require('../utils/logger');
+const { logIncoming, logOutgoing } = require('../services/messageLogService');
 
 /**
  * 处理频道@机器人消息
@@ -47,14 +48,17 @@ async function handleChannelAtMessage(eventData, eventType = null) {
     // 记录收到的消息
     const labels = await getLogLabels(guild_id, author?.id);
     void rememberGuild(guild_id, { author, member });
-    logger.message({
+    logIncoming({
       type: '频道',
       eventType: eventType || 'AT_MESSAGE_CREATE',
       groupId: guild_id || channel_id,
       groupName: labels.groupName,
       userId: author?.id,
       userName: labels.userName,
-      content: trimmedContent
+      content: trimmedContent,
+      messageId,
+      timestamp: eventData.timestamp,
+      isBot: Boolean(author?.bot)
     });
     
     const result = await processLocalMessage(trimmedContent, author, member, guild_id);
@@ -75,7 +79,7 @@ async function handleChannelAtMessage(eventData, eventType = null) {
 async function sendReplyToChannel(responseData, channelId, messageId, userId = null, guildId = null) {
   try {
     const labels = await getLogLabels(guildId, userId);
-    logger.reply({
+    logOutgoing({
       type: '频道',
       groupId: guildId || channelId,
       groupName: labels.groupName,

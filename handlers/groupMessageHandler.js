@@ -15,6 +15,7 @@ const { rememberGroupOpenid, getStoredGroupName, getLogLabels } = require('../se
 const { uploadRichMedia } = require('../services/richMediaUpload');
 const { joinPublicUrl } = require('../utils/publicUrl');
 const logger = require('../utils/logger');
+const { logIncoming, logOutgoing } = require('../services/messageLogService');
 
 const recentGroupMessageIds = new Map();
 const GROUP_MESSAGE_DEDUP_MS = 60 * 1000;
@@ -73,14 +74,17 @@ async function handleGroupAtMessage(eventData, eventType = null) {
     const userId = author?.id || author?.member_openid || author?.user_openid;
     const labels = await getLogLabels(replyGroupOpenid, userId);
     void rememberGroupOpenid(replyGroupOpenid, { author });
-    logger.message({
+    logIncoming({
       type: '群',
       eventType: eventType || 'GROUP_AT_MESSAGE_CREATE',
       groupId: replyGroupOpenid,
       groupName: labels.groupName,
       userId,
       userName: labels.userName,
-      content: trimmedContent
+      content: trimmedContent,
+      messageId,
+      timestamp: eventData.timestamp,
+      isBot: Boolean(author?.bot)
     });
 
     const startedAt = Date.now();
@@ -109,7 +113,7 @@ async function handleGroupAtMessage(eventData, eventType = null) {
 async function sendReplyToGroup(responseData, groupOpenid, messageId, userId = null) {
   try {
     const labels = await getLogLabels(groupOpenid, userId);
-    logger.reply({
+    logOutgoing({
       type: '群',
       groupId: groupOpenid,
       groupName: labels.groupName,

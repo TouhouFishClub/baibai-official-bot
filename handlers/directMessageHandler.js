@@ -27,6 +27,7 @@ const {
 const { uploadRichMedia } = require('../services/richMediaUpload');
 const { joinPublicUrl } = require('../utils/publicUrl');
 const logger = require('../utils/logger');
+const { logIncoming, logOutgoing } = require('../services/messageLogService');
 
 /**
  * 获取群组配置
@@ -61,13 +62,16 @@ async function handleC2CMessage(eventData) {
     const labels = await getUserLogLabels(userId, 'c2c');
     void rememberUser(author, { eventData, source: 'c2c' });
     const userName = labels.userName || resolveUserName(author, eventData);
-    logger.message({
+    logIncoming({
       type: '私聊',
       eventType: 'C2C_MESSAGE_CREATE',
       groupId: '-',
       userId,
       userName,
-      content: trimmedContent
+      content: trimmedContent,
+      messageId,
+      timestamp: eventData.timestamp,
+      isBot: Boolean(author?.bot)
     });
     
     // 获取本地消息分发所需的群组上下文
@@ -85,7 +89,7 @@ async function handleC2CMessage(eventData) {
       // 如果没有返回结果，静默处理，不发送回复
     } catch (apiError) {
       logger.error('本地消息处理错误', apiError.message);
-      logger.reply({
+      logOutgoing({
         type: '私聊',
         groupId: '-',
         userId,
@@ -123,14 +127,17 @@ async function handleDirectMessage(eventData) {
     const userLabels = await getUserLogLabels(resolveUserOpenid(author), 'direct');
     void rememberGuild(guild_id, { author, fetchProfile: false });
     void rememberUser(author, { eventData, source: 'direct', guildId: guild_id });
-    logger.message({
+    logIncoming({
       type: '频道私信',
       eventType: 'DIRECT_MESSAGE_CREATE',
       groupId: guild_id,
       groupName: labels.groupName,
       userId,
       userName: labels.userName || userLabels.userName || resolveGuildMemberName(author),
-      content: trimmedContent
+      content: trimmedContent,
+      messageId,
+      timestamp: eventData.timestamp,
+      isBot: Boolean(author?.bot)
     });
     // 获取本地消息分发所需的群组上下文
     const config = getChannelConfig();
@@ -147,7 +154,7 @@ async function handleDirectMessage(eventData) {
       // 如果没有返回结果，静默处理，不发送回复
     } catch (apiError) {
       logger.error('本地消息处理错误', apiError.message);
-      logger.reply({
+      logOutgoing({
         type: '频道私信',
         groupId: guild_id,
         userId,
@@ -216,7 +223,7 @@ async function sendFilteredTextToC2C(userOpenid, message, eventId = null, msgId 
 async function sendReplyToC2C(responseData, userOpenid, messageId, userName = null) {
   try {
     const labels = await getUserLogLabels(userOpenid, 'c2c');
-    logger.reply({
+    logOutgoing({
       type: '私聊',
       groupId: '-',
       userId: userOpenid,
@@ -294,7 +301,7 @@ async function sendReplyToC2C(responseData, userOpenid, messageId, userName = nu
 async function sendReplyToDirectMessage(responseData, guildId, messageId, userId = null) {
   try {
     const labels = await getGuildLogLabels(guildId, userId);
-    logger.reply({
+    logOutgoing({
       type: '频道私信',
       groupId: guildId,
       groupName: labels.groupName,

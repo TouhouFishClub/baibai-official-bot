@@ -35,7 +35,7 @@ test('收发消息按通道、事件、会话和用户输出', () => {
 
   assert.equal(normalLines.length, 2);
   assert.match(normalLines[0], /\[群\]\[GROUP_AT_MESSAGE_CREATE\]\[g1\]\[u1\] \/mbi 释魂/);
-  assert.match(normalLines[1], /\[频道私信\]\[发送\]\[guild-1\]\[u2\] \[图片\] MabiGC.png 附言/);
+  assert.match(normalLines[1], /\[频道私信\]\[SEND_MESSAGE\]\[guild-1\]\[u2\] \[图片\] MabiGC.png 附言/);
 });
 
 test('已有群名和成员名时日志带名称和 openid', () => {

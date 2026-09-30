@@ -7,12 +7,18 @@ test('群成员按 openid 回查和用户别名查询会声明索引', () => {
   const groupMemberIndex = specs.find((spec) => spec.options.name === 'member_openid_last_seen');
   const userIdIndex = specs.find((spec) => spec.options.name === 'user_id');
   const unionIndex = specs.find((spec) => spec.options.name === 'union_openid');
+  const sessionIndex = specs.find((spec) => spec.options.name === 'session_ts');
+  const messageIdIndex = specs.find((spec) => spec.options.name === 'message_id');
 
   assert.equal(groupMemberIndex.collection, 'qq_group_members');
   assert.deepEqual(groupMemberIndex.keys, { member_openid: 1, last_seen_at: -1 });
   assert.equal(userIdIndex.collection, 'qq_users');
   assert.equal(userIdIndex.options.sparse, true);
   assert.equal(unionIndex.collection, 'qq_users');
+  assert.equal(sessionIndex.collection, 'qq_messages');
+  assert.deepEqual(sessionIndex.keys, { sessionId: 1, ts: -1 });
+  assert.equal(messageIdIndex.options.unique, true);
+  assert.equal(messageIdIndex.options.sparse, true);
 });
 
 test('ensureBotIndexes 会对声明的集合调用 createIndex', async () => {
@@ -29,8 +35,19 @@ test('ensureBotIndexes 会对声明的集合调用 createIndex', async () => {
   };
 
   const names = await ensureBotIndexes(db);
-  assert.deepEqual(names, ['member_openid_last_seen', 'user_id', 'union_openid']);
-  assert.equal(created.length, 3);
+  assert.deepEqual(names, [
+    'member_openid_last_seen',
+    'user_id',
+    'union_openid',
+    'session_ts',
+    'user_ts',
+    'message_id'
+  ]);
+  assert.equal(created.length, 6);
   assert.equal(created[0].name, 'qq_group_members');
   assert.deepEqual(created[0].keys, { member_openid: 1, last_seen_at: -1 });
+  assert.equal(created[3].name, 'qq_messages');
+  assert.deepEqual(created[3].keys, { sessionId: 1, ts: -1 });
+  assert.equal(created[5].options.unique, true);
+  assert.equal(created[5].options.sparse, true);
 });
