@@ -19,10 +19,16 @@ const {
 const DEFAULT_COLLECTION = 'qq_groups';
 const DEFAULT_MEMBER_COLLECTION = 'qq_group_members';
 const DEFAULT_REFRESH_MS = 6 * 60 * 60 * 1000;
+const DEFAULT_MEMBER_REFRESH_MS = 24 * 60 * 60 * 1000;
 
 function resolveRefreshMs(value = process.env.QQ_GROUP_INFO_REFRESH_MS) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_REFRESH_MS;
+}
+
+function resolveMemberRefreshMs(value = process.env.QQ_GROUP_MEMBER_INFO_REFRESH_MS) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_MEMBER_REFRESH_MS;
 }
 
 function resolveCollectionName(value = process.env.MONGODB_GROUP_COLLECTION) {
@@ -62,6 +68,10 @@ function shouldRefreshGroupInfo(doc, now = new Date(), refreshMs = DEFAULT_REFRE
     return false;
   }
   return true;
+}
+
+function shouldRefreshMemberInfo(doc, now = new Date(), refreshMs = DEFAULT_MEMBER_REFRESH_MS) {
+  return shouldRefreshGroupInfo(doc, now, refreshMs);
 }
 
 function mapMemberRecord(groupOpenid, member, savedAt) {
@@ -122,6 +132,7 @@ function createGroupInfoService(options = {}) {
   const inFlight = new Map();
   const now = options.now || (() => new Date());
   const refreshMs = resolveRefreshMs(options.refreshMs);
+  const memberRefreshMs = resolveMemberRefreshMs(options.memberRefreshMs);
   const collectionName = resolveCollectionName(options.collectionName);
   const memberCollectionName = resolveMemberCollectionName(options.memberCollectionName);
   const configured = options.isConfigured || isMongoConfigured;
@@ -217,6 +228,7 @@ function createGroupInfoService(options = {}) {
     const collection = await getMemberCollection();
     if (!collection) return;
     const username = resolveMemberName(author);
+    const existing = await collection.findOne({ _id: memberDocId(groupOpenid, memberOpenid) });
     const update = {
       group_openid: groupOpenid,
       member_openid: memberOpenid,
@@ -224,6 +236,7 @@ function createGroupInfoService(options = {}) {
       updated_at: seenAt
     };
     if (username) update.username = username;
+    if (username && !existing?.fetched_at) update.fetched_at = seenAt;
     await collection.updateOne(
       { _id: memberDocId(groupOpenid, memberOpenid) },
       { $set: update },
@@ -292,7 +305,7 @@ function createGroupInfoService(options = {}) {
       const collection = await getMemberCollection();
       if (!collection) return null;
       const existing = await collection.findOne({ _id: memberDocId(groupOpenid, memberOpenid) });
-      if (!shouldRefreshGroupInfo(existing, seenAt, refreshMs)) {
+      if (!shouldRefreshMemberInfo(existing, seenAt, memberRefreshMs)) {
         return existing;
       }
       try {
@@ -404,8 +417,10 @@ module.exports = {
   DEFAULT_COLLECTION,
   DEFAULT_MEMBER_COLLECTION,
   DEFAULT_REFRESH_MS,
+  DEFAULT_MEMBER_REFRESH_MS,
   createGroupInfoService,
   shouldRefreshGroupInfo,
+  shouldRefreshMemberInfo,
   fetchGroupInfoFromQq,
   fetchGroupMemberFromQq,
   parseQqApiError,

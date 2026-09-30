@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {
   createGroupInfoService,
   shouldRefreshGroupInfo,
+  shouldRefreshMemberInfo,
   parseQqApiError
 } = require('../services/groupInfoService');
 
@@ -57,6 +58,7 @@ function createService({
   fetchGroupInfo,
   fetchGroupMember,
   refreshMs = 60 * 60 * 1000,
+  memberRefreshMs,
   now
 }) {
   return createGroupInfoService({
@@ -66,6 +68,7 @@ function createService({
     fetchGroupInfo,
     fetchGroupMember: fetchGroupMember || (async () => ({ member_openid: 'skip', username: '忽略' })),
     refreshMs,
+    memberRefreshMs,
     now: now || (() => new Date('2026-09-30T00:00:00+08:00')),
     logger: { warn() {}, debug() {} }
   });
@@ -80,6 +83,38 @@ test('缺少缓存或超过刷新间隔时需要重新拉取群资料', () => {
   );
   assert.equal(
     shouldRefreshGroupInfo({ fetched_at: new Date('2026-09-30T10:00:00+08:00') }, now, 3600000),
+    true
+  );
+});
+
+test('成员已有名称或失败后按上次更新隔一天再请求，发言不会后延', () => {
+  const now = new Date('2026-09-30T12:00:00+08:00');
+  const day = 24 * 60 * 60 * 1000;
+  assert.equal(shouldRefreshMemberInfo(null, now, day), true);
+  assert.equal(
+    shouldRefreshMemberInfo({ username: 'Егг' }, now, day),
+    true
+  );
+  assert.equal(
+    shouldRefreshMemberInfo({
+      username: 'Егг',
+      fetched_at: new Date('2026-09-30T00:00:00+08:00')
+    }, now, day),
+    false
+  );
+  assert.equal(
+    shouldRefreshMemberInfo({
+      username: 'Егг',
+      fetched_at: new Date('2026-09-29T11:59:00+08:00')
+    }, now, day),
+    true
+  );
+  assert.equal(
+    shouldRefreshMemberInfo({ fetched_at: new Date('2026-09-30T00:00:00+08:00') }, now, day),
+    false
+  );
+  assert.equal(
+    shouldRefreshMemberInfo({ fetched_at: new Date('2026-09-29T11:59:00+08:00') }, now, day),
     true
   );
 });
@@ -272,6 +307,73 @@ test('群成员接口失败不影响群名入库', async () => {
   assert.match(memberCollection.docs.get('group-members-denied:member-denied').last_error, /11253/);
 });
 
+test('事件里已有昵称时不请求群成员接口', async () => {
+  const collection = createMemoryCollection();
+  const memberCollection = createMemoryCollection();
+  let memberFetch = 0;
+  const service = createService({
+    collection,
+    memberCollection,
+    fetchGroupInfo: async (groupOpenid) => ({
+      group_openid: groupOpenid,
+      group_name: '读书分享会'
+    }),
+    fetchGroupMember: async () => {
+      memberFetch += 1;
+      throw new Error('不应请求');
+    }
+  });
+
+  await service.rememberGroupOpenid('group-named', {
+    author: { member_openid: 'member-named', username: 'Егг' }
+  });
+  assert.equal(memberFetch, 0);
+  assert.equal(await service.getStoredMemberName('group-named', 'member-named'), 'Егг');
+});
+
+test('成员冷却从上次更新起算，中间发言不会后延一天', async () => {
+  let current = new Date('2026-09-30T00:00:00+08:00');
+  const memberCollection = createMemoryCollection();
+  let memberFetch = 0;
+  const service = createService({
+    collection: createMemoryCollection(),
+    memberCollection,
+    memberRefreshMs: 24 * 60 * 60 * 1000,
+    now: () => current,
+    fetchGroupInfo: async (groupOpenid) => ({
+      group_openid: groupOpenid,
+      group_name: '测试群'
+    }),
+    fetchGroupMember: async () => {
+      memberFetch += 1;
+      const error = new Error('应用无接口访问权限');
+      error.response = { status: 403, data: { code: 11253, message: '应用无接口访问权限' } };
+      throw error;
+    }
+  });
+
+  await service.rememberGroupOpenid('g1', {
+    author: { member_openid: 'm1', username: 'Егг' }
+  });
+  assert.equal(memberFetch, 0);
+
+  current = new Date('2026-09-30T12:00:00+08:00');
+  await service.rememberGroupOpenid('g1', {
+    author: { member_openid: 'm1', username: 'Егг' }
+  });
+  assert.equal(memberFetch, 0);
+  assert.equal(
+    memberCollection.docs.get('g1:m1').fetched_at.getTime(),
+    new Date('2026-09-30T00:00:00+08:00').getTime()
+  );
+
+  current = new Date('2026-10-01T00:00:01+08:00');
+  await service.rememberGroupOpenid('g1', {
+    author: { member_openid: 'm1', username: 'Егг' }
+  });
+  assert.equal(memberFetch, 1);
+});
+
 test('群资料在有效期内仍会按发言人补成员', async () => {
   const collection = createMemoryCollection([{
     _id: 'group-1',
@@ -299,8 +401,8 @@ test('群资料在有效期内仍会按发言人补成员', async () => {
     author: { member_openid: 'member-1', username: '发言昵称' }
   });
   assert.equal(groupFetch, 0);
-  assert.equal(memberFetch, 1);
-  assert.equal(await service.getStoredMemberName('group-1', 'member-1'), '接口昵称');
+  assert.equal(memberFetch, 0);
+  assert.equal(await service.getStoredMemberName('group-1', 'member-1'), '发言昵称');
 });
 
 test('可按成员 openid 跨群取最近一次有昵称的记录', async () => {
