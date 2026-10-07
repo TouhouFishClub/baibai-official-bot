@@ -12,6 +12,10 @@ function ok(data) {
   return { status: 'ok', data };
 }
 
+function silent() {
+  return { status: 'ok', data: null, handled: true };
+}
+
 function text(message) {
   return ok({ type: 'text', message });
 }
@@ -188,7 +192,7 @@ async function executeMessage(content, context = {}) {
       userId: context.userId,
       content: normalized
     });
-    return ok(null);
+    return silent();
   }
 
   if (normalized.includes('|')) {
@@ -198,7 +202,7 @@ async function executeMessage(content, context = {}) {
         userId: context.userId,
         content: normalized
       });
-      return ok(null);
+      return silent();
     }
     const [key, ...answerParts] = normalized.split('|');
     const result = await setAnswer({
@@ -303,9 +307,19 @@ async function executeCommand(command, content, context = {}) {
 
 async function executeInput(input, context = {}) {
   const parsed = parseCommand(input);
-  return parsed.command
-    ? executeCommand(parsed.command, parsed.content, context)
-    : executeMessage(parsed.content, context);
+  const result = parsed.command
+    ? await executeCommand(parsed.command, parsed.content, context)
+    : await executeMessage(parsed.content, context);
+
+  if (result?.data || result?.handled || parsed.command || result?.status !== 'ok') {
+    return result;
+  }
+
+  const { isLlmConfigured, runMabinogiAgent } = require('./mabinogiAgent');
+  if (!isLlmConfigured()) return result;
+
+  const agentResult = await runMabinogiAgent(parsed.content, context);
+  return agentResult || result;
 }
 
 module.exports = {
@@ -315,5 +329,7 @@ module.exports = {
   executeInput,
   executeMessage,
   parseCommand,
-  canWriteQa
+  canWriteQa,
+  deterministicFortune,
+  todayExpertDungeon
 };

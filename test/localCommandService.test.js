@@ -4,6 +4,10 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 
+delete process.env.LLM_BASE_URL;
+delete process.env.LLM_API_KEY;
+delete process.env.LLM_MODEL;
+
 const temporaryRoot = path.join(os.tmpdir(), `baibai-local-command-${process.pid}`);
 process.env.QA_STORE_PATH = path.join(temporaryRoot, 'qa');
 process.env.IMAGE_DATA_DIR = path.join(temporaryRoot, 'images');

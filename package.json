@@ -7,7 +7,7 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "node --test --test-concurrency=1",
-    "check": "node --check src/index.js && node --check services/localCommandService.js",
+    "check": "node --check src/index.js && node --check services/localCommandService.js && node --check services/mabinogiAgent.js",
     "install-sharp": "node scripts/install-sharp.js",
     "setup-image-compression": "node scripts/install-sharp.js"
   },
