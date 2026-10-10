@@ -33,17 +33,7 @@ const getBrowser = async () => {
   }
 
   const puppeteer = await loadPuppeteer()
-  _browser = await puppeteer.launch(getBrowserLaunchOptions({
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',
-    ],
-  }))
+  _browser = await puppeteer.launch(getBrowserLaunchOptions())
   console.log('[renderRecipe] 浏览器实例已创建')
   return _browser
 }
