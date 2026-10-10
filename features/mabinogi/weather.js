@@ -8,18 +8,7 @@ const mabiWeather = async (content, callback) => {
   
   try {
     const puppeteer = await loadPuppeteer();
-    // 启动浏览器，添加更多兼容性选项
     browser = await puppeteer.launch(getBrowserLaunchOptions({
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu'
-      ],
       timeout: 30000
     }));
     
