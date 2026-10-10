@@ -9,6 +9,13 @@ const { IMAGE_DATA } = require(path.join(__dirname, '..', '..', '..', 'baibaiCon
 const { getBrowserLaunchOptions } = require('../../../utils/browserOptions')
 const { htmlToImage } = require('../../../utils/htmlToImage')
 const { getHanyiWenheiDataUrl } = require('../../../utils/hanyiwenhei')
+const logger = require('../../../utils/logger')
+
+function debugLog(...args) {
+	if (logger.currentLogLevel >= logger.LOG_LEVELS.DEBUG) {
+		console.log(...args)
+	}
+}
 
 const parser = new xml2js.Parser()
 let filterDataStorage = {}
@@ -294,8 +301,8 @@ const searchEquipUpgrade = async (qq, group, content, callback) => {
 	}
 	if(filterEq.length === 1) {
 		let meu = await matchEquipUpgrade(filterEq[0].Category, filterEq[0].Par_UpgradeMax - 1)
-		console.log(filterEq[0])
-		console.log(filterEq[0].xmlParser)
+		debugLog(filterEq[0])
+		debugLog(filterEq[0].xmlParser)
 		renderImage(filterEq[0], meu, callback)
 		return
 	}
@@ -523,9 +530,9 @@ const renderFixedInfo = targetItem => {
 }
 
 const renderImage = (targetItem, upgradeInfos, callback, otherMsg = '') => {
-	console.log(itemUpgradeEffectData)
-	console.log(upgradeInfos.map(x => `[${x.id}]（${x.upgraded_min} ~ ${x.upgraded_max}）${x.localnameCn}: ${x.descCn}`).join('\n'))
-	console.log(upgradeInfos.length)
+	debugLog(itemUpgradeEffectData)
+	debugLog(upgradeInfos.map(x => `[${x.id}]（${x.upgraded_min} ~ ${x.upgraded_max}）${x.localnameCn}: ${x.descCn}`).join('\n'))
+	debugLog(upgradeInfos.length)
 	let normalUpgrade = [], gemUpgrade = []
 	upgradeInfos.forEach(item => {
 		if(item.hasOwnProperty('upgraded_max') && item.hasOwnProperty('upgraded_min')) {
@@ -809,7 +816,7 @@ const renderImage = (targetItem, upgradeInfos, callback, otherMsg = '') => {
 		skipCjkInject: true
 	})
 		.then(() => {
-			console.log(`保存MabiItemUpgrade.png成功！`)
+			debugLog('保存MabiItemUpgrade.png成功！')
 			let imgMsg = `${otherMsg}[CQ:image,file=${path.join('send', 'mabi_other', `MabiItemUpgrade.png`)}]`
 			callback(imgMsg)
 		})

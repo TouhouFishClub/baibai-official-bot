@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const savedEnv = {};
-for (const key of ['LLM_BASE_URL', 'LLM_API_KEY', 'LLM_MODEL', 'LLM_TIMEOUT_MS', 'DATABASE_BRIDGE_URL', 'DATABASE_BRIDGE_SECRET']) {
+for (const key of ['LLM_BASE_URL', 'LLM_API_KEY', 'LLM_MODEL', 'LLM_TIMEOUT_MS', 'DATABASE_BRIDGE_URL', 'DATABASE_BRIDGE_SECRET', 'WEB_SEARCH_PROVIDER', 'TAVILY_API_KEY']) {
   savedEnv[key] = process.env[key];
 }
 
@@ -11,6 +11,8 @@ process.env.LLM_API_KEY = 'test-key';
 process.env.LLM_MODEL = 'test-model';
 delete process.env.DATABASE_BRIDGE_URL;
 delete process.env.DATABASE_BRIDGE_SECRET;
+delete process.env.WEB_SEARCH_PROVIDER;
+delete process.env.TAVILY_API_KEY;
 
 const { executeInput, deterministicFortune, todayExpertDungeon } = require('../services/localCommandService');
 const {
@@ -74,7 +76,9 @@ test('洛奇小助手按模型选择的内部功能直接回复', async (t) => {
       ]
     });
     assert.equal(calls.length, 4);
-    assert.deepEqual(calls[0], { name: 'query_smuggler', args: { superQuery: false } });
+    assert.equal(calls[0].name, 'query_smuggler');
+    assert.equal(calls[0].id, 'call_0');
+    assert.deepEqual(calls[0].args, { superQuery: false });
     assert.equal(calls[1].args.keyword, '工程手套');
     assert.deepEqual(calls[2].args, {});
   });
@@ -207,6 +211,162 @@ test('洛奇小助手按模型选择的内部功能直接回复', async (t) => {
       assert.equal(result.data, null);
     } finally {
       process.env.LLM_API_KEY = 'test-key';
+      clearAgentTestOverrides();
+    }
+  });
+
+  await t.test('网页搜索失败时仍发出已有查询结果', async () => {
+    process.env.WEB_SEARCH_PROVIDER = 'tavily';
+    process.env.TAVILY_API_KEY = 'tvly-test';
+    let rounds = 0;
+    useOverrides({
+      async complete(messages, tools) {
+        rounds += 1;
+        assert.equal(tools.some((tool) => tool.function.name === 'web_search'), true);
+        if (rounds === 1) {
+          return {
+            choices: [{
+              message: {
+                tool_calls: [
+                  { id: 'img', type: 'function', function: { name: 'query_smuggler', arguments: '{}' } },
+                  { id: 'web', type: 'function', function: { name: 'web_search', arguments: '{"query":"洛奇 维护"}' } }
+                ]
+              }
+            }]
+          };
+        }
+        const toolMessage = messages.find((item) => item.role === 'tool' && item.tool_call_id === 'web');
+        assert.match(toolMessage.content, /额度不足或欠费/);
+        return { choices: [{ message: { content: '网页没查到，走私图如下。' } }] };
+      },
+      async executeTool(name) {
+        assert.equal(name, 'query_smuggler');
+        return { type: 'image', path: 'mabi_other/smuggler.png', base64: 'abc' };
+      },
+      async searchWeb(query) {
+        assert.equal(query, '洛奇 维护');
+        return {
+          ok: false,
+          provider: 'tavily',
+          query,
+          count: 0,
+          modelContent: '网络搜索失败（tavily）：额度不足或欠费。请继续根据已有知识回答，并说明这次没能查到网页。'
+        };
+      }
+    });
+    try {
+      const result = await executeInput('帮我查走私，再看看维护公告', { userId: 'u', groupId: 'g' });
+      assert.equal(rounds, 2);
+      assert.equal(result.data.type, 'image');
+      assert.equal(result.data.base64, 'abc');
+      assert.match(result.data.message, /网页没查到/);
+    } finally {
+      delete process.env.WEB_SEARCH_PROVIDER;
+      delete process.env.TAVILY_API_KEY;
+      clearAgentTestOverrides();
+    }
+  });
+
+  await t.test('搜索后的模型请求失败时仍发出已生成的图片', async () => {
+    process.env.WEB_SEARCH_PROVIDER = 'tavily';
+    process.env.TAVILY_API_KEY = 'tvly-test';
+    let rounds = 0;
+    useOverrides({
+      async complete() {
+        rounds += 1;
+        if (rounds === 1) {
+          return {
+            choices: [{
+              message: {
+                tool_calls: [
+                  { id: 'img', type: 'function', function: { name: 'query_boss', arguments: '{}' } },
+                  { id: 'web', type: 'function', function: { name: 'web_search', arguments: '{"query":"洛奇 活动"}' } }
+                ]
+              }
+            }]
+          };
+        }
+        throw new Error('connect ECONNREFUSED');
+      },
+      async executeTool() {
+        return { type: 'image', path: 'mabi_other/bosswork.png', base64: 'boss' };
+      },
+      async searchWeb() {
+        return { ok: false, count: 0, modelContent: '网络搜索失败（tavily）：额度不足或欠费。' };
+      }
+    });
+    try {
+      const result = await executeInput('看看 boss 和最新活动', { userId: 'u', groupId: 'g' });
+      assert.equal(result.data.type, 'image');
+      assert.equal(result.data.base64, 'boss');
+    } finally {
+      delete process.env.WEB_SEARCH_PROVIDER;
+      delete process.env.TAVILY_API_KEY;
+      clearAgentTestOverrides();
+    }
+  });
+
+  await t.test('摘要不够时读取原网页，整理后再回复', async () => {
+    process.env.WEB_SEARCH_PROVIDER = 'tavily';
+    process.env.TAVILY_API_KEY = 'tvly-test';
+    let rounds = 0;
+    useOverrides({
+      async complete(messages) {
+        rounds += 1;
+        if (rounds === 1) {
+          return {
+            choices: [{
+              message: {
+                tool_calls: [{
+                  id: 'web',
+                  type: 'function',
+                  function: { name: 'web_search', arguments: '{"query":"洛奇 维护"}' }
+                }]
+              }
+            }]
+          };
+        }
+        if (rounds === 2) {
+          const summary = messages.find((item) => item.tool_call_id === 'web');
+          assert.match(summary.content, /摘要很短/);
+          return {
+            choices: [{
+              message: {
+                tool_calls: [{
+                  id: 'page',
+                  type: 'function',
+                  function: { name: 'read_webpage', arguments: '{"urls":["https://luoqi.tiancity.com/a"]}' }
+                }]
+              }
+            }]
+          };
+        }
+        const page = messages.find((item) => item.tool_call_id === 'page');
+        assert.match(page.content, /维护到凌晨两点/);
+        return { choices: [{ message: { content: '今晚维护到凌晨。来源 https://luoqi.tiancity.com/a' } }] };
+      },
+      async searchWeb() {
+        return {
+          ok: true,
+          count: 1,
+          results: [{ title: '公告', url: 'https://luoqi.tiancity.com/a/', content: '摘要很短' }],
+          modelContent: '1. 公告\nhttps://luoqi.tiancity.com/a/\n摘要很短'
+        };
+      },
+      async readPages(urls) {
+        assert.deepEqual(urls, ['https://luoqi.tiancity.com/a']);
+        return { ok: true, count: 1, modelContent: '原文含有：维护到凌晨两点' };
+      }
+    });
+    try {
+      const result = await executeInput('看看最新维护公告的具体时间', { userId: 'u', groupId: 'g' });
+      assert.equal(rounds, 3);
+      assert.equal(result.data.type, 'text');
+      assert.equal(result.data.message, '今晚维护到凌晨。来源 https://luoqi.tiancity.com/a');
+      assert.equal(result.data.message.includes('维护到凌晨两点'), false);
+    } finally {
+      delete process.env.WEB_SEARCH_PROVIDER;
+      delete process.env.TAVILY_API_KEY;
       clearAgentTestOverrides();
     }
   });

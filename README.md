@@ -64,6 +64,8 @@ QA 管理员来自 `QA_WRITE_USER_IDS`、`config/channel.json` 的 `admin_user`�
 
 配置了模型之后，群里每条未命中的消息都会请求一次接口；模型回复 `NO_REPLY` 时机器人保持沉默，这次请求仍会计费。模型请求失败时也不回复，精确命令不受影响。
 
+网络搜索用 `WEB_SEARCH_PROVIDER` 选择一家或多家，逗号分隔，目前接入 Tavily。在 `.env` 中设置 `WEB_SEARCH_PROVIDER=tavily` 和 `TAVILY_API_KEY`，其余参数见 `.env.example`。`TAVILY_MAX_RESULTS` 留空时用 `WEB_SEARCH_MAX_RESULTS`；两边都写时以 Tavily 自己的条数为准。Search 按深度计费，不按条数计费。内部功能仍直接回复。搜索摘要先交给模型；摘要不够时，模型再打开结果里的原网页，整理成带链接的回答后才发给用户。`info` 日志只写 `[web_search]通过tavily搜索了5篇文章` 这种概要，搜索词和链接在 `debug`。某一家失败、超时或欠费只记日志，不打断其他搜索和已经得到的回复。
+
 ## 旧数据库桥接
 
 老服务器只需部署 [`legacy-data-bridge/`](legacy-data-bridge/) 目录。它使用 MongoDB 只读账号并返回结构化数据，筛选结果的展示和图片生成仍在新服务器完成。
