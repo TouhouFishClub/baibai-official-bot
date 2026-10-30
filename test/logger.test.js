@@ -2,24 +2,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const logger = require('../utils/logger');
 
-test('收到的消息在 info 输出，发出的消息只在 debug 输出', () => {
+test('群消息和私聊的收发都在 info 输出', () => {
   const normalLines = [];
   const originalLog = console.log;
   console.log = (...args) => normalLines.push(args.join(' '));
   const originalLevel = process.env.LOG_LEVEL;
-  const replyPayload = {
-    type: '频道私信',
-    groupId: 'guild-1',
-    userId: 'u2',
-    content: logger.describeReplyPayload({
-      type: 'image',
-      path: '/tmp/MabiGC.png',
-      message: '附言'
-    })
-  };
+  process.env.LOG_LEVEL = 'info';
 
   try {
-    process.env.LOG_LEVEL = 'info';
     logger.message({
       type: '群',
       eventType: 'GROUP_AT_MESSAGE_CREATE',
@@ -27,20 +17,37 @@ test('收到的消息在 info 输出，发出的消息只在 debug 输出', () =
       userId: 'u1',
       content: '/mbi 释魂'
     });
-    logger.reply(replyPayload);
-    assert.equal(normalLines.length, 1);
-    assert.match(normalLines[0], /INFO: \[群\]\[GROUP_AT_MESSAGE_CREATE\]\[g1\]\[u1\] \/mbi 释魂/);
-
-    normalLines.length = 0;
-    process.env.LOG_LEVEL = 'debug';
-    logger.reply(replyPayload);
-    assert.equal(normalLines.length, 1);
-    assert.match(normalLines[0], /DEBUG: \[频道私信\]\[SEND_MESSAGE\]\[guild-1\]\[u2\] \[图片\] MabiGC.png 附言/);
+    logger.reply({
+      type: '群',
+      groupId: 'g1',
+      userId: 'u1',
+      content: logger.describeReplyPayload({
+        type: 'image',
+        path: '/tmp/伊鲁夏吊铃.png'
+      })
+    });
+    logger.message({
+      type: '私聊',
+      eventType: 'C2C_MESSAGE_CREATE',
+      userId: 'u2',
+      content: '你好'
+    });
+    logger.reply({
+      type: '私聊',
+      userId: 'u2',
+      content: '你好'
+    });
   } finally {
     console.log = originalLog;
     if (originalLevel === undefined) delete process.env.LOG_LEVEL;
     else process.env.LOG_LEVEL = originalLevel;
   }
+
+  assert.equal(normalLines.length, 4);
+  assert.match(normalLines[0], /INFO: \[群\]\[GROUP_AT_MESSAGE_CREATE\]\[g1\]\[u1\] \/mbi 释魂/);
+  assert.match(normalLines[1], /INFO: \[群\]\[SEND_MESSAGE\]\[g1\]\[u1\] \[图片\] 伊鲁夏吊铃\.png/);
+  assert.match(normalLines[2], /INFO: \[私聊\]\[C2C_MESSAGE_CREATE\]\[-\]\[u2\] 你好/);
+  assert.match(normalLines[3], /INFO: \[私聊\]\[SEND_MESSAGE\]\[-\]\[u2\] 你好/);
 });
 
 test('已有群名和成员名时日志带名称和 openid', () => {

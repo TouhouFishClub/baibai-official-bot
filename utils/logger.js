@@ -247,7 +247,7 @@ function message({ type, eventType, groupId, groupName, userId, userName, conten
 }
 
 function reply({ type, groupId, groupName, userId, userName, content, eventType = 'SEND_MESSAGE' } = {}) {
-  log('DEBUG', formatTrafficLine({ type, eventType, groupId, groupName, userId, userName, content }));
+  log('INFO', formatTrafficLine({ type, eventType, groupId, groupName, userId, userName, content }));
 }
 
 module.exports = {
