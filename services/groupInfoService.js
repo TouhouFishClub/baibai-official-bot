@@ -345,7 +345,7 @@ function createGroupInfoService(options = {}) {
           { upsert: true }
         );
         if (Number(code) === 11253) {
-          log.warn('获取群成员无权限，该接口仅白名单机器人可用', { groupOpenid, memberOpenid });
+          log.debug('获取群成员无权限，该接口仅白名单机器人可用', { groupOpenid, memberOpenid });
         } else {
           log.warn('获取群成员失败', { groupOpenid, memberOpenid, code, message });
         }

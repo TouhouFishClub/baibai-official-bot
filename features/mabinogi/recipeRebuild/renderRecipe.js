@@ -34,7 +34,7 @@ const getBrowser = async () => {
 
   const puppeteer = await loadPuppeteer()
   _browser = await puppeteer.launch(getBrowserLaunchOptions())
-  console.log('[renderRecipe] 浏览器实例已创建')
+  logger.debug('[renderRecipe] 浏览器实例已创建')
   return _browser
 }
 
@@ -44,7 +44,7 @@ const scheduleBrowserClose = () => {
     if (_browser) {
       try {
         await _browser.close()
-        console.log('[renderRecipe] 浏览器实例已关闭（空闲超时）')
+        logger.debug('[renderRecipe] 浏览器实例已关闭（空闲超时）')
       } catch (e) { /* ignore */ }
       _browser = null
     }
@@ -113,7 +113,7 @@ const downloadItemIcons = async (itemIds) => {
   const toDownload = unique.filter(id => !fs.existsSync(path.join(ITEM_ICON_DIR, `${id}.png`)))
   if (toDownload.length === 0) return
 
-  console.log(`[renderRecipe] 下载 ${toDownload.length} 张物品图片...`)
+  logger.debug(`[renderRecipe] 下载 ${toDownload.length} 张物品图片...`)
   // 并发下载，限制并发数
   const CONCURRENCY = 8
   for (let i = 0; i < toDownload.length; i += CONCURRENCY) {
@@ -364,7 +364,7 @@ const renderRecipeImage = async (product, recipes, allItems, recipesByProduct, s
       },
     })
 
-    console.log(`[renderRecipe] 保存 ${safeName}.png 成功`)
+    logger.debug(`[renderRecipe] 保存 ${safeName}.png 成功`)
 
     const imgMsg = `[CQ:image,file=${path.join('send', 'mabi_recipe', `${safeName}.png`)}]`
     let mixMsg = ''

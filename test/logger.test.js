@@ -2,14 +2,24 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const logger = require('../utils/logger');
 
-test('收发消息按通道、事件、会话和用户输出', () => {
+test('收到的消息在 info 输出，发出的消息只在 debug 输出', () => {
   const normalLines = [];
   const originalLog = console.log;
   console.log = (...args) => normalLines.push(args.join(' '));
   const originalLevel = process.env.LOG_LEVEL;
-  process.env.LOG_LEVEL = 'info';
+  const replyPayload = {
+    type: '频道私信',
+    groupId: 'guild-1',
+    userId: 'u2',
+    content: logger.describeReplyPayload({
+      type: 'image',
+      path: '/tmp/MabiGC.png',
+      message: '附言'
+    })
+  };
 
   try {
+    process.env.LOG_LEVEL = 'info';
     logger.message({
       type: '群',
       eventType: 'GROUP_AT_MESSAGE_CREATE',
@@ -17,25 +27,20 @@ test('收发消息按通道、事件、会话和用户输出', () => {
       userId: 'u1',
       content: '/mbi 释魂'
     });
-    logger.reply({
-      type: '频道私信',
-      groupId: 'guild-1',
-      userId: 'u2',
-      content: logger.describeReplyPayload({
-        type: 'image',
-        path: '/tmp/MabiGC.png',
-        message: '附言'
-      })
-    });
+    logger.reply(replyPayload);
+    assert.equal(normalLines.length, 1);
+    assert.match(normalLines[0], /INFO: \[群\]\[GROUP_AT_MESSAGE_CREATE\]\[g1\]\[u1\] \/mbi 释魂/);
+
+    normalLines.length = 0;
+    process.env.LOG_LEVEL = 'debug';
+    logger.reply(replyPayload);
+    assert.equal(normalLines.length, 1);
+    assert.match(normalLines[0], /DEBUG: \[频道私信\]\[SEND_MESSAGE\]\[guild-1\]\[u2\] \[图片\] MabiGC.png 附言/);
   } finally {
     console.log = originalLog;
     if (originalLevel === undefined) delete process.env.LOG_LEVEL;
     else process.env.LOG_LEVEL = originalLevel;
   }
-
-  assert.equal(normalLines.length, 2);
-  assert.match(normalLines[0], /\[群\]\[GROUP_AT_MESSAGE_CREATE\]\[g1\]\[u1\] \/mbi 释魂/);
-  assert.match(normalLines[1], /\[频道私信\]\[SEND_MESSAGE\]\[guild-1\]\[u2\] \[图片\] MabiGC.png 附言/);
 });
 
 test('已有群名和成员名时日志带名称和 openid', () => {
