@@ -69,12 +69,28 @@ test('未开全量时的@事件沿用平台已去掉前缀的正文', () => {
   assert.equal(result.content, '111111111111111');
 });
 
-test('未@自己的全量消息在进入本地处理前返回', async () => {
-  await handleGroupAtMessage({
-    id: 'message-not-self',
-    content: '<@OTHER123> 你好',
-    mentions: [{ id: 'OTHER123', is_you: false }],
-    author: { id: 'user-1' },
-    group_openid: 'group-1'
-  }, EVENT_TYPE.GROUP_MESSAGE_CREATE);
+test('未@自己的全量消息仍按 info 记录，但不进入命令处理', async () => {
+  const lines = [];
+  const originalLog = console.log;
+  const originalLevel = process.env.LOG_LEVEL;
+  console.log = (...args) => lines.push(args.join(' '));
+  process.env.LOG_LEVEL = 'info';
+
+  try {
+    await handleGroupAtMessage({
+      id: 'message-not-self',
+      content: '<@OTHER123> 你好',
+      mentions: [{ id: 'OTHER123', is_you: false }],
+      author: { id: 'user-1' },
+      group_openid: 'group-1'
+    }, EVENT_TYPE.GROUP_MESSAGE_CREATE);
+  } finally {
+    console.log = originalLog;
+    if (originalLevel === undefined) delete process.env.LOG_LEVEL;
+    else process.env.LOG_LEVEL = originalLevel;
+  }
+
+  assert.ok(lines.some((line) => (
+    /INFO: \[群\]\[GROUP_MESSAGE_CREATE\]\[group-1\]\[user-1\] <@OTHER123> 你好/.test(line)
+  )));
 });

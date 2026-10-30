@@ -3,7 +3,7 @@
  * 处理群中@机器人的消息。
  * 未开全量时事件是 GROUP_AT_MESSAGE_CREATE，content 已去掉@机器人前缀。
  * 开启全量后同一条@会变成 GROUP_MESSAGE_CREATE，content 保留 <@member_openid>，
- * 是否@到自己看 mentions[].is_you。当前只处理@自己的全量消息。
+ * 是否@到自己看 mentions[].is_you。全量消息都记入 info 日志，但只处理@自己的消息。
  */
 
 const fs = require('fs');
@@ -95,27 +95,18 @@ function rememberGroupMessage(messageId) {
 }
 
 /**
- * 处理群@消息。全量事件里只继续处理 mentions[].is_you 命中的消息。
+ * 处理群@消息。全量消息都写入 info 日志；命令只处理 mentions[].is_you 命中的消息。
  */
 async function handleGroupAtMessage(eventData, eventType = null) {
   try {
     const normalized = normalizeGroupInbound(eventType, eventData);
-    if (!normalized.accept) {
-      const mentions = Array.isArray(eventData?.mentions) ? eventData.mentions : [];
-      logger.debug('群全量消息未@机器人，忽略', {
-        eventType,
-        groupId: resolveGroupOpenid(eventData),
-        messageId: eventData?.id,
-        mentionCount: mentions.length,
-        selfMarked: mentions.some((item) => item?.is_you === true)
-      });
-      return;
-    }
+    const rawContent = String(eventData.content || '').trim();
 
     logger.debug('处理群消息', {
       eventType,
       groupId: resolveGroupOpenid(eventData),
-      contentLength: normalized.content.length
+      contentLength: rawContent.length,
+      accept: normalized.accept
     });
 
     // 获取消息内容和相关信息
@@ -126,14 +117,12 @@ async function handleGroupAtMessage(eventData, eventType = null) {
       logger.debug('群消息已处理，跳过重复事件', { eventType, messageId });
       return;
     }
-    
-    // 全量消息里的@自己前缀已去掉，与 GROUP_AT_MESSAGE_CREATE 的正文对齐
-    const trimmedContent = normalized.content;
-    if (!trimmedContent) {
+
+    if (!rawContent) {
       logger.debug('群消息无文本内容，忽略处理', { eventType, messageId });
       return;
     }
-    
+
     const userId = author?.id || author?.member_openid || author?.user_openid;
     const labels = await getLogLabels(replyGroupOpenid, userId);
     void rememberGroupOpenid(replyGroupOpenid, { author });
@@ -144,11 +133,30 @@ async function handleGroupAtMessage(eventData, eventType = null) {
       groupName: labels.groupName,
       userId,
       userName: labels.userName,
-      content: trimmedContent,
+      content: rawContent,
       messageId,
       timestamp: eventData.timestamp,
       isBot: Boolean(author?.bot)
     });
+
+    if (!normalized.accept) {
+      const mentions = Array.isArray(eventData?.mentions) ? eventData.mentions : [];
+      logger.debug('群全量消息未@机器人，仅记录不处理', {
+        eventType,
+        groupId: replyGroupOpenid,
+        messageId,
+        mentionCount: mentions.length,
+        selfMarked: mentions.some((item) => item?.is_you === true)
+      });
+      return;
+    }
+
+    // 全量消息里的@自己前缀已去掉，与 GROUP_AT_MESSAGE_CREATE 的正文对齐
+    const trimmedContent = normalized.content;
+    if (!trimmedContent) {
+      logger.debug('群消息去掉@后无文本内容，忽略处理', { eventType, messageId });
+      return;
+    }
 
     const startedAt = Date.now();
     const result = await processLocalMessage(trimmedContent, userId, replyGroupOpenid);
