@@ -1,6 +1,9 @@
 /**
  * 群消息处理器
- * 处理群中@机器人的消息，以及群全量消息 GROUP_MESSAGE_CREATE
+ * 处理群中@机器人的消息。
+ * 未开全量时事件是 GROUP_AT_MESSAGE_CREATE，content 已去掉@机器人前缀。
+ * 开启全量后同一条@会变成 GROUP_MESSAGE_CREATE，content 保留 <@member_openid>，
+ * 是否@到自己看 mentions[].is_you。当前只处理@自己的全量消息。
  */
 
 const fs = require('fs');
@@ -16,6 +19,53 @@ const { uploadRichMedia } = require('../services/richMediaUpload');
 const { joinPublicUrl } = require('../utils/publicUrl');
 const logger = require('../utils/logger');
 const { logIncoming, logOutgoing } = require('../services/messageLogService');
+const { EVENT_TYPE } = require('../utils/constants');
+
+const SELF_MENTION_ID_KEYS = ['id', 'member_openid', 'openid', 'user_openid'];
+const MENTION_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+function mentionIds(mention) {
+  if (!mention || typeof mention !== 'object') return [];
+  const ids = [];
+  for (const key of SELF_MENTION_ID_KEYS) {
+    const value = mention[key];
+    if (typeof value !== 'string' || value === 'all' || !MENTION_ID_PATTERN.test(value)) continue;
+    if (!ids.includes(value)) ids.push(value);
+  }
+  return ids;
+}
+
+function findSelfMentionTokens(content, mentions) {
+  if (typeof content !== 'string' || !Array.isArray(mentions)) return [];
+  const tokens = [];
+  for (const mention of mentions) {
+    if (!mention || mention.is_you !== true) continue;
+    for (const id of mentionIds(mention)) {
+      for (const token of [`<@${id}>`, `<@!${id}>`]) {
+        if (content.includes(token) && !tokens.includes(token)) tokens.push(token);
+      }
+    }
+  }
+  return tokens;
+}
+
+/**
+ * 全量群消息只收下明确@到本机器人、且正文里有对应 <@id> 的消息，并去掉这段前缀。
+ * GROUP_AT_MESSAGE_CREATE 的正文已由平台去掉@机器人，原样使用。
+ */
+function normalizeGroupInbound(eventType, eventData = {}) {
+  const content = eventData.content || '';
+  if (eventType === EVENT_TYPE.GROUP_MESSAGE_CREATE) {
+    const tokens = findSelfMentionTokens(content, eventData.mentions);
+    if (tokens.length === 0) {
+      return { accept: false, content: String(content).trim() };
+    }
+    let text = String(content);
+    for (const token of tokens) text = text.split(token).join('');
+    return { accept: true, content: text.trim() };
+  }
+  return { accept: true, content: String(content).trim() };
+}
 
 const recentGroupMessageIds = new Map();
 const GROUP_MESSAGE_DEDUP_MS = 60 * 1000;
@@ -45,18 +95,31 @@ function rememberGroupMessage(messageId) {
 }
 
 /**
- * 处理群@消息和群全量消息
+ * 处理群@消息。全量事件里只继续处理 mentions[].is_you 命中的消息。
  */
 async function handleGroupAtMessage(eventData, eventType = null) {
   try {
+    const normalized = normalizeGroupInbound(eventType, eventData);
+    if (!normalized.accept) {
+      const mentions = Array.isArray(eventData?.mentions) ? eventData.mentions : [];
+      logger.debug('群全量消息未@机器人，忽略', {
+        eventType,
+        groupId: resolveGroupOpenid(eventData),
+        messageId: eventData?.id,
+        mentionCount: mentions.length,
+        selfMarked: mentions.some((item) => item?.is_you === true)
+      });
+      return;
+    }
+
     logger.debug('处理群消息', {
       eventType,
       groupId: resolveGroupOpenid(eventData),
-      contentLength: String(eventData.content || '').length
+      contentLength: normalized.content.length
     });
 
     // 获取消息内容和相关信息
-    const { content, author, id: messageId } = eventData;
+    const { author, id: messageId } = eventData;
     const replyGroupOpenid = resolveGroupOpenid(eventData);
 
     if (rememberGroupMessage(messageId)) {
@@ -64,8 +127,8 @@ async function handleGroupAtMessage(eventData, eventType = null) {
       return;
     }
     
-    // 消息内容预处理（去除前后空格）
-    const trimmedContent = (content || '').trim();
+    // 全量消息里的@自己前缀已去掉，与 GROUP_AT_MESSAGE_CREATE 的正文对齐
+    const trimmedContent = normalized.content;
     if (!trimmedContent) {
       logger.debug('群消息无文本内容，忽略处理', { eventType, messageId });
       return;
@@ -252,5 +315,6 @@ async function processLocalMessage(input, userId, groupId) {
 
 module.exports = {
   handleGroupAtMessage,
+  normalizeGroupInbound,
   resolveGroupOpenid
 };
