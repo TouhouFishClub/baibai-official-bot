@@ -41,21 +41,47 @@ test('全量消息支持 <@!id> 写法', () => {
   assert.equal(result.content, '/meu 释魂');
 });
 
-test('未@自己、@其他人、@全体和不可靠标记都不接收', () => {
+test('未@自己的全量消息仍进入处理，且不会误删提及', () => {
   const cases = [
-    { content: '大家早上好', mentions: [] },
-    { content: '<@OTHER123> 你好', mentions: [{ id: 'OTHER123', is_you: false, bot: true }] },
-    { content: '<@all> 集合', mentions: [{ id: 'all', is_you: true }] },
-    { content: `<@${BOT_ID}> 你好`, mentions: [{ id: BOT_ID, is_you: 'true' }] },
-    { content: `<@${BOT_ID}> 你好`, mentions: [{ id: BOT_ID, is_you: 1 }] },
-    { content: `<@${BOT_ID}> 你好`, mentions: [{ id: BOT_ID, bot: true }] },
-    { content: `<@${BOT_ID}> 你好`, mentions: [{ id: 'not-in-content', is_you: true }] },
-    { content: `<@${'x'.repeat(129)}> 你好`, mentions: [{ id: 'x'.repeat(129), is_you: true }] }
+    { content: '1+1', mentions: [], expected: '1+1' },
+    { content: '大家早上好', mentions: [], expected: '大家早上好' },
+    {
+      content: '<@OTHER123> 你好',
+      mentions: [{ id: 'OTHER123', is_you: false, bot: true }],
+      expected: '<@OTHER123> 你好'
+    },
+    { content: '<@all> 集合', mentions: [{ id: 'all', is_you: true }], expected: '<@all> 集合' },
+    {
+      content: `<@${BOT_ID}> 你好`,
+      mentions: [{ id: BOT_ID, is_you: 'true' }],
+      expected: `<@${BOT_ID}> 你好`
+    },
+    {
+      content: `<@${BOT_ID}> 你好`,
+      mentions: [{ id: BOT_ID, is_you: 1 }],
+      expected: `<@${BOT_ID}> 你好`
+    },
+    {
+      content: `<@${BOT_ID}> 你好`,
+      mentions: [{ id: BOT_ID, bot: true }],
+      expected: `<@${BOT_ID}> 你好`
+    },
+    {
+      content: `<@${BOT_ID}> 你好`,
+      mentions: [{ id: 'not-in-content', is_you: true }],
+      expected: `<@${BOT_ID}> 你好`
+    },
+    {
+      content: `<@${'x'.repeat(129)}> 你好`,
+      mentions: [{ id: 'x'.repeat(129), is_you: true }],
+      expected: `<@${'x'.repeat(129)}> 你好`
+    }
   ];
 
   for (const eventData of cases) {
     const result = normalizeGroupInbound(EVENT_TYPE.GROUP_MESSAGE_CREATE, eventData);
-    assert.equal(result.accept, false, eventData.content);
+    assert.equal(result.accept, true, eventData.content);
+    assert.equal(result.content, eventData.expected, eventData.content);
   }
 });
 
@@ -69,18 +95,18 @@ test('未开全量时的@事件沿用平台已去掉前缀的正文', () => {
   assert.equal(result.content, '111111111111111');
 });
 
-test('未@自己的全量消息仍按 info 记录，但不进入命令处理', async () => {
+test('未@自己的全量消息仍按 info 记录，并进入本地处理', async () => {
   const lines = [];
   const originalLog = console.log;
   const originalLevel = process.env.LOG_LEVEL;
   console.log = (...args) => lines.push(args.join(' '));
-  process.env.LOG_LEVEL = 'info';
+  process.env.LOG_LEVEL = 'debug';
 
   try {
     await handleGroupAtMessage({
-      id: 'message-not-self',
-      content: '<@OTHER123> 你好',
-      mentions: [{ id: 'OTHER123', is_you: false }],
+      id: 'message-not-self-plain',
+      content: '大家早上好',
+      mentions: [],
       author: { id: 'user-1' },
       group_openid: 'group-1'
     }, EVENT_TYPE.GROUP_MESSAGE_CREATE);
@@ -91,6 +117,8 @@ test('未@自己的全量消息仍按 info 记录，但不进入命令处理', a
   }
 
   assert.ok(lines.some((line) => (
-    /INFO: \[群\]\[GROUP_MESSAGE_CREATE\]\[group-1\]\[user-1\] <@OTHER123> 你好/.test(line)
+    /INFO: \[群\]\[GROUP_MESSAGE_CREATE\]\[group-1\]\[user-1\] 大家早上好/.test(line)
   )));
+  assert.ok(lines.some((line) => /DEBUG: 群消息本地处理完成/.test(line)));
+  assert.equal(lines.some((line) => line.includes('仅记录不处理')), false);
 });

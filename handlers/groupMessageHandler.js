@@ -3,7 +3,7 @@
  * 处理群中@机器人的消息。
  * 未开全量时事件是 GROUP_AT_MESSAGE_CREATE，content 已去掉@机器人前缀。
  * 开启全量后同一条@会变成 GROUP_MESSAGE_CREATE，content 保留 <@member_openid>，
- * 是否@到自己看 mentions[].is_you。全量消息都记入 info 日志，但只处理@自己的消息。
+ * 是否@到自己看 mentions[].is_you。全量消息都会处理；@到自己时先去掉这段前缀。
  */
 
 const fs = require('fs');
@@ -50,16 +50,13 @@ function findSelfMentionTokens(content, mentions) {
 }
 
 /**
- * 全量群消息只收下明确@到本机器人、且正文里有对应 <@id> 的消息，并去掉这段前缀。
+ * 全量群消息全部进入处理。若 mentions[].is_you 且正文有对应 <@id>，先去掉机器人自己的提及。
  * GROUP_AT_MESSAGE_CREATE 的正文已由平台去掉@机器人，原样使用。
  */
 function normalizeGroupInbound(eventType, eventData = {}) {
   const content = eventData.content || '';
   if (eventType === EVENT_TYPE.GROUP_MESSAGE_CREATE) {
     const tokens = findSelfMentionTokens(content, eventData.mentions);
-    if (tokens.length === 0) {
-      return { accept: false, content: String(content).trim() };
-    }
     let text = String(content);
     for (const token of tokens) text = text.split(token).join('');
     return { accept: true, content: text.trim() };
@@ -95,7 +92,7 @@ function rememberGroupMessage(messageId) {
 }
 
 /**
- * 处理群@消息。全量消息都写入 info 日志；命令只处理 mentions[].is_you 命中的消息。
+ * 处理群消息。全量消息都写入 info 日志并进入命令处理；@自己时先去掉机器人提及。
  */
 async function handleGroupAtMessage(eventData, eventType = null) {
   try {
@@ -138,18 +135,6 @@ async function handleGroupAtMessage(eventData, eventType = null) {
       timestamp: eventData.timestamp,
       isBot: Boolean(author?.bot)
     });
-
-    if (!normalized.accept) {
-      const mentions = Array.isArray(eventData?.mentions) ? eventData.mentions : [];
-      logger.debug('群全量消息未@机器人，仅记录不处理', {
-        eventType,
-        groupId: replyGroupOpenid,
-        messageId,
-        mentionCount: mentions.length,
-        selfMarked: mentions.some((item) => item?.is_you === true)
-      });
-      return;
-    }
 
     // 全量消息里的@自己前缀已去掉，与 GROUP_AT_MESSAGE_CREATE 的正文对齐
     const trimmedContent = normalized.content;
